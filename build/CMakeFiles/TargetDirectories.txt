@@ -1,0 +1,4 @@
+F:/DTA_Playtogether/build/CMakeFiles/DTA_Playtogether.dir
+F:/DTA_Playtogether/build/CMakeFiles/DTA_Server.dir
+F:/DTA_Playtogether/build/CMakeFiles/ALL_BUILD.dir
+F:/DTA_Playtogether/build/CMakeFiles/ZERO_CHECK.dir
