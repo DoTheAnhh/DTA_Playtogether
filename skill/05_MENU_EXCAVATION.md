@@ -1,70 +1,142 @@
-# 05: ĐẶC TẢ MENU & MODULE ĐÀO KHO BÁU (EXCAVATION MODULE)
+# 05 — EXCAVATION MODULE
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống đào kho báu tự động bằng C# & Unity. Tối ưu thuật toán tam giác hóa tín hiệu máy dò (Radar Signal Triangulation) để xác định vị trí rương ngầm trong tích tắc, dịch chuyển chuẩn xác vào tâm, kích hoạt cắm xẻng đào bằng hàm game và tự động mở rương kho báu.
+> Module `Excavation` phải giữ workflow của DTA_Tool nhưng được triển khai theo kiến trúc plugin/dynamic chung. Không copy logic từ module khác; dùng Core abstractions.
 
----
-
-## I. KIẾN TRÚC MODULE & INTERFACES
-
-```
-src/Client/Features/Excavation/
-├── IExcavationService.cs   # Interface dịch vụ đào kho báu
-├── ExcavationService.cs    # Tương tác IL2CPP & quản lý xẻng
-├── ExcavationBot.cs        # State Machine điều khiển chu trình đào
-├── RadarSolver.cs          # Thuật toán giải mã tọa độ rương từ tín hiệu dò
-├── ExcavationModels.cs     # Cấu trúc dữ liệu Tín hiệu, Rương & Thống kê
-└── ExcavationView.cs       # Unity UI View Component
-```
-
-### 1. Interface `IExcavationService`
+## 1. CONTRACT
 
 ```csharp
-using System;
-using System.Numerics;
-using System.Threading.Tasks;
-
-namespace DTA.Features.Excavation
+public interface IExcavationService : IFeatureService
 {
-    public interface IExcavationService
-    {
-        // Các hành động gọi hàm game trực tiếp
-        Task<bool> DigShovelAsync();                     // Cắm xẻng đào
-        Task<bool> TeleportToPointAsync(Vector3 pos);    // Dịch chuyển lấy mẫu / tới rương
-        Task<bool> OpenTreasureChestAsync();             // Mở rương kho báu
-        Task<bool> RepairShovelAsync();                  // Sửa xẻng đào
-        Task<bool> CloseRewardDialogAsync();             // Đóng popup nhận thưởng
-
-        // Dữ liệu máy dò
-        RadarSignalData GetRadarSignal();                // Đọc tần số bíp, cường độ sóng
-        Vector3? CalculateChestPosition();               // Tọa độ rương tính toán
-        bool IsShovelBroken();
-    }
+    ValueTask<FeatureResult> ExecuteAsync(ExcavationCommand command, CancellationToken ct);
+    ValueTask<ExcavationSnapshot> ReadSnapshotAsync(CancellationToken ct);
 }
 ```
 
----
+Service không phụ thuộc Unity View. View chỉ bind state/command.
 
-## II. THUẬT TOÁN ĐỊNH VỊ TÂM KHO BÁU (TRIANGULATION SOLVER)
+## 2. MODULE STRUCTURE
 
-Thay vì đi bộ dò dẫm thủ công:
-1. **Lấy mẫu 3 điểm (3-Point Sampling):**
-   - Đọc cường độ tín hiệu $S_1$ tại điểm hiện tại $P_1$.
-   - Dịch chuyển sang $P_2 = P_1 + (10, 0, 0)$ đọc $S_2$.
-   - Dịch chuyển sang $P_3 = P_1 + (0, 0, 10)$ đọc $S_3$.
-2. **Giải hệ phương trình:**
-   - Dựa trên mối quan hệ giữa cường độ sóng và khoảng cách $d \propto \frac{1}{\sqrt{S}}$, thuật toán thiết lập 3 đường tròn giao nhau và giải ra tọa độ tâm rương chính xác đến $0.05\text{m}$.
-3. **Dịch chuyển & Đào:**
-   - Dịch chuyển thẳng tới tâm rương qua `set_TransientPosition`.
-   - Vòng lặp gọi `ShovelController.OnClick_Button(0)` cho đến khi rương lộ diện.
-   - Gọi hàm mở rương và nhận thưởng trên Main Thread.
+```text
+Features/Excavation/
+├── IExcavationService.cs
+├── ExcavationService.cs
+├── ExcavationBot.cs
+├── TreasureScanner.cs
+├── ExcavationModels.cs
+├── ExcavationPolicies.cs
+├── ExcavationCatalog.cs
+├── ExcavationModule.cs
+└── UI/
+    ├── ExcavationView.cs
+    └── ExcavationViewModel.cs
+```
 
----
+`Catalog` và static metadata phải cache. `Scanner` chỉ phát hiện state; `Bot` quyết định state transition; `Service` thực thi action.
 
-## III. BẢNG MÃ HÀM IL2CPP ĐÀO KHO BÁU (DUMP.CS)
+## 3. GENERIC PIPELINE
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
-| :--- | :--- | :--- | :--- |
-| **Cắm Xẻng** | `ShovelController.OnClick_Button` | `0x57D5600` | `(thisPtr, int actionType=0)` trên Main Thread |
-| **Tín Hiệu Dò** | Field `m_RadarSignalStrength` | Offset `0xAC` | Float: Cường độ tín hiệu sóng máy dò |
-| **Mở Rương** | `TreasureChest.OnClick_Open` | `0x58F2100` | Mở rương sau khi đào xong |
-| **Độ Bền Xẻng** | Field `m_CurrentDurability` | Offset `0xA0` | Độ bền xẻng |
+```text
+Observe -> Filter -> Score -> Select -> Validate -> Approach -> Action -> Verify -> Collect/Result -> Cooldown -> Observe
+```
+
+Không dùng sleep cứng. Dùng condition/event/timeout.
+
+## 4. DYNAMIC TARGET SELECTION
+
+Mọi filter/priority phải là data-driven:
+
+```text
+TargetRule
+ ├── Enabled
+ ├── Priority
+ ├── RequiredTags
+ ├── ExcludedTags
+ ├── MinValue / MaxValue
+ └── CustomScore
+```
+
+Có thể thay đổi rule từ UI/schema mà không sửa business code.
+
+## 5. SCAN OPTIMIZATION
+
+- Snapshot entity list một lần cho mỗi cycle.
+- Spatial index/quadtree/grid nếu số entity lớn.
+- Reuse entity buffers.
+- Chỉ rescan khi `SceneVersion`, `EntityRevision` hoặc TTL hết hạn.
+- Khi map mới: ưu tiên warm-up scan và cache metadata trước khi bot bắt đầu hành động.
+
+## 6. ACTIONS
+
+Các action chuẩn của module phải map qua `IGameActionDispatcher`; không hardcode RVA trong feature.
+
+| Action | Native binding |
+|---|---|
+| Dig | Resolve từ `IGameBindingProvider` |
+| CollectTreasure | Resolve từ binding profile |
+| SolveTarget | Resolve từ binding profile |
+| ApproachTarget | Resolve từ binding profile |
+| ResetSearch | Resolve từ binding profile |
+
+Mọi binding phải có `GameIdentity`, signature/version và evidence tag.
+
+## 7. STATE MACHINE
+
+Các state phải implement `IState<TContext>` và dùng FSM Core. Không tạo vòng `while(true)` riêng cho feature.
+
+```text
+Idle
+  -> Scanning
+  -> TargetSelected
+  -> Approaching
+  -> Acting
+  -> Verifying
+  -> Collecting/HandlingResult
+  -> Cooldown
+  -> Scanning
+```
+
+Mỗi state có:
+- entry condition;
+- exit condition;
+- timeout;
+- retry policy;
+- cancellation;
+- telemetry.
+
+## 8. FAILURE RECOVERY
+
+Nếu action fail:
+1. Verify target còn tồn tại.
+2. Refresh volatile snapshot.
+3. Retry theo policy giới hạn.
+4. Nếu target stale: bỏ target và rescan.
+5. Nếu platform/game state lỗi: pause module và yêu cầu Core recovery.
+
+Không retry vô hạn.
+
+## 9. UI REQUIREMENTS
+
+View phải tái sử dụng các component chung:
+`FeatureHeader`, `StatusBadge`, `Toggle`, `Slider`, `FilterList`, `TargetPreview`, `StatsCard`, `ActionButton`, `EventLog`.
+
+Không hardcode layout cho từng resolution.
+
+## 10. PERFORMANCE TARGET
+
+Không đặt con số giả nếu chưa benchmark. Dùng baseline đo thực tế:
+- scan p50/p95;
+- action p50/p95;
+- allocations/frame;
+- target selection duration;
+- stale target rate;
+- successful action rate.
+
+## 11. ACCEPTANCE CRITERIA
+
+- Giữ nguyên chức năng DTA_Tool.
+- Có dynamic filter/priority.
+- Không duplicate scanner/cache/dispatcher.
+- Có cache và invalidation.
+- Chuyển platform không sửa module.
+- UI responsive.
+- Regression test cho bug đã biết.

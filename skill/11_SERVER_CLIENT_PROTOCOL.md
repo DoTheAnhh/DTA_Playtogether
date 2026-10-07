@@ -1,73 +1,134 @@
-# 11: ĐẶC TẢ KIẾN TRÚC CLIENT - SERVER & GIAO THỨC TỐI ƯU HÓA TẢI VPS (SERVER-DRIVEN UI)
+# 11 — SERVER / CLIENT PROTOCOL & SERVER-DRIVEN CONFIG
 
-> **Mục tiêu:** Thiết kế hệ thống mạng Client - Server bằng C# (.NET 8 ASP.NET Core & Unity WebSocket Client) chịu tải cao (High Concurrency), đảm bảo bảo mật tuyệt đối, chống crack bản quyền và giải quyết triệt để bài toán quá tải VPS khi có hàng chục nghìn người dùng sử dụng tool đồng thời.
+## 1. NGUYÊN TẮC
 
----
+Server là control/config plane; Client là runtime/data plane.
 
-## I. NGUYÊN TẮC CÂN BẰNG TẢI: SERVER-DRIVEN UI & LOCAL EXECUTION
+Server **không** điều khiển từng tick runtime. Client phải hoạt động ổn định với cache khi server tạm thời không khả dụng.
 
-### 1. Phân Tách Trách Nhiệm
-- **Client (Fat-Engine, Thin-Renderer):**
-  + Chạy toàn bộ logic quét bộ nhớ và gọi hàm game cục bộ trên máy người dùng (độ trễ 0ms, không tiêu tốn 1 byte băng thông server cho vòng lặp game).
-  + Client **không chứa giao diện tĩnh cố định**. Client là một **Renderer Engine** (Unity uGUI/UI Toolkit) chờ nhận bản thiết kế giao diện (UI Schema) từ Server.
-- **Server (ASP.NET Core trên VPS):**
-  + **Server-Driven UI:** Server lưu trữ layout, các tab, nút bấm, slider, màu sắc dưới dạng JSON/Protobuf nhị phân. Khi user đăng nhập thành công, Server gửi UI Schema xuống.
-  + **Authentication & HWID Lock:** Xác thực mã máy, thời hạn VIP.
-  + **Heartbeat Thưa (Sparse Heartbeat):** Mỗi 60 giây gửi 1 gói tin kiểm tra sự sống (32 bytes).
-  + **Dynamic Offset Cloud:** Khi game Play Together cập nhật phiên bản, Admin cập nhật offset mới lên Server, Client tự động tải về bộ offset mới mà không cần cài lại tool.
+## 2. SHARED CONTRACT
 
----
-
-## II. GIAO THỨC TRUYỀN THÔNG (NETWORK PROTOCOL & PACKET DESIGN)
-
-### 1. Cấu Trúc Khung Tin Nhị Phân (Packet Header)
-
-```csharp
-using System.Runtime.InteropServices;
-
-namespace DTA.Shared.Protocol
-{
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct PacketHeader
-    {
-        public uint Magic;          // 0x44544150 ("DTAP")
-        public ushort PacketId;     // Mã lệnh (Auth, Heartbeat, UISchema, OffsetSync)
-        public uint PayloadLength;  // Độ dài dữ liệu
-        public ulong Timestamp;     // Thời gian gửi (chống phát lại)
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
-        public byte[] Nonce;        // AES-GCM IV Nonce
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
-        public byte[] Tag;          // AES-GCM Auth Tag
-    }
-}
+```text
+src/Shared/
+├── Contracts/
+├── Protocol/
+├── Models/
+├── Enums/
+└── Validation/
 ```
 
----
+Dùng cùng contract C# giữa ASP.NET Core và Unity client.
 
-## III. SCHEMA GIAO DIỆN PHÁT TỪ MÁY CHỦ (SERVER-DRIVEN UI SCHEMA)
+## 3. REQUEST ENVELOPE
 
+```text
+Version
+RequestId
+Timestamp
+SessionId
+Operation
+Payload
+Signature
+```
+
+Mỗi response có:
+`RequestId / Status / ServerVersion / DataVersion / Payload / Error`.
+
+## 4. SERVER-DRIVEN UI
+
+Server có thể gửi schema:
 ```json
 {
-  "version": "2.5.0",
-  "theme": {
-    "accent_color": "#00E5FF",
-    "background_color": "#0D0F12",
-    "card_color": "#1C2129"
-  },
-  "menus": [
-    {
-      "id": "menu_fishing",
-      "title": "Câu Cá (Fishing)",
-      "cards": [
-        {
-          "title": "Điều Khiển Tự Động",
-          "controls": [
-            { "type": "toggle", "id": "auto_cast", "label": "Tự Quăng Cần", "default": true },
-            { "type": "toggle", "id": "instant_reel", "label": "Giật Tức Thì (< 1ms)", "default": true }
-          ]
-        }
-      ]
-    }
-  ]
+  "version": 12,
+  "theme": "dta-modern",
+  "menus": [],
+  "features": [],
+  "settings": []
 }
 ```
+
+Client phải validate schema trước khi render.
+
+Không để server gửi arbitrary executable code. Server chỉ gửi data/config.
+
+## 5. CACHE STRATEGY
+
+Mỗi resource có:
+`ResourceKey / Version / ETag / TTL / Signature`.
+
+Flow:
+```text
+Memory Cache
+  ↓ miss
+Persistent Cache
+  ↓ miss/stale
+Server
+  ↓
+Validate -> Store -> Publish
+```
+
+Dữ liệu ít thay đổi như UI schema, catalog, waypoint list, feature metadata phải cache mạnh.
+
+## 6. SERVER MUTATION CACHE
+
+Mỗi lần server thêm/sửa/xóa key/config/waypoint/feature metadata:
+1. Update database.
+2. Update in-memory cache.
+3. Increment data version.
+4. Publish invalidation/event.
+5. Persist/replicate nếu hệ thống có nhiều node.
+
+Mục tiêu là không query database ở mọi request.
+
+## 7. MULTI-INSTANCE / MULTI-PLATFORM
+
+Session phải nhận diện:
+`User + DeviceIdentity + PlatformKind + GameIdentity + ClientVersion`.
+
+Không dùng một global singleton session cho nhiều emulator instance.
+
+## 8. NETWORK RESILIENCE
+
+- timeout;
+- retry có exponential backoff + jitter;
+- circuit breaker;
+- offline cache;
+- request deduplication;
+- cancellation;
+- compression cho payload lớn.
+
+## 9. SECURITY
+
+Production dùng TLS và signed responses. Sensitive payload mã hóa theo nhu cầu; không tự chế crypto.
+
+## 10. SERVER PERFORMANCE
+
+- Memory cache cho read-heavy data.
+- Batch operations.
+- Async I/O.
+- Pagination.
+- Rate limiting.
+- Connection pooling.
+- Metrics p50/p95/p99.
+
+## 11. VERSION COMPATIBILITY
+
+```text
+ClientVersion
+ProtocolVersion
+SchemaVersion
+GameVersion
+PlatformKind
+```
+
+Server phải từ chối/giảm tính năng rõ ràng khi incompatible, thay vì gửi schema không tương thích.
+
+## 12. SERVER DEFINITION OF DONE
+
+Nếu task thay đổi server:
+- build/test server;
+- update shared contract nếu cần;
+- cập nhật migration/cache invalidation;
+- kiểm tra backward compatibility;
+- cập nhật docs;
+- **push server lên Git sau khi hoàn thành task nếu có thay đổi server**.

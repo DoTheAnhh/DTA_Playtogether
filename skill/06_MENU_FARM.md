@@ -1,81 +1,142 @@
-# 06: ĐẶC TẢ MENU & MODULE NÔNG TRẠI (FARM MODULE)
+# 06 — FARM MODULE
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống quản lý nông trại tự động bằng C# & Unity. Tối ưu quét trạng thái các chậu cây và luống đất trong sân nhà (Home Garden), tự động gieo hạt, tưới nước, bón phân và thu hoạch nông sản thông qua gọi hàm game mà không cần click chạm màn hình.
+> Module `Farm` phải giữ workflow của DTA_Tool nhưng được triển khai theo kiến trúc plugin/dynamic chung. Không copy logic từ module khác; dùng Core abstractions.
 
----
-
-## I. KIẾN TRÚC MODULE & INTERFACES
-
-```
-src/Client/Features/Farm/
-├── IFarmService.cs         # Interface dịch vụ nông trại
-├── FarmService.cs          # Tương tác IL2CPP & quản lý luống cây
-├── FarmBot.cs              # State Machine điều khiển chu trình nông trại
-├── FarmPlotScanner.cs      # Quét danh sách chậu cây và tình trạng phát triển
-├── FarmModels.cs           # Dữ liệu Chậu cây, Cây trồng & Hạt giống
-└── FarmView.cs             # Unity UI View Component
-```
-
-### 1. Interface `IFarmService`
+## 1. CONTRACT
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-
-namespace DTA.Features.Farm
+public interface IFarmService : IFeatureService
 {
-    public interface IFarmService
-    {
-        // Các hành động gọi hàm game trực tiếp
-        Task<bool> WaterPlotAsync(uint plotUid);       // Tưới nước cho cây
-        Task<bool> HarvestPlotAsync(uint plotUid);     // Thu hoạch nông sản
-        Task<bool> PlantSeedAsync(uint plotUid, uint seedId); // Gieo hạt
-        Task<bool> RemoveDeadPlantAsync(uint plotUid); // Dọn cây hỏng / cỏ
-        Task<bool> CloseFarmDialogAsync();             // Đóng popup nông trại
-
-        // Quét dữ liệu vườn nhà
-        IReadOnlyList<FarmPlotEntity> ScanAllPlots();
-        FarmStats GetGardenStatus();
-    }
+    ValueTask<FeatureResult> ExecuteAsync(FarmCommand command, CancellationToken ct);
+    ValueTask<FarmSnapshot> ReadSnapshotAsync(CancellationToken ct);
 }
 ```
 
----
+Service không phụ thuộc Unity View. View chỉ bind state/command.
 
-## II. CHU TRÌNH TỰ ĐỘNG HÓA NÔNG TRẠI (FARM PIPELINE)
+## 2. MODULE STRUCTURE
 
-```
-       ┌──────────────┐
-       │  SCAN_PLOTS  │ (Quét toàn bộ luống cây trong sân vườn)
-       └──────┬───────┘
-              ▼
-   ┌───────────────────────┐
-   │   PHÂN LOẠI TRẠNG THÁI│
-   ├───────────────────────┤
-   │ 1. Chín -> Harvest    │
-   │ 2. Khát nước -> Water │
-   │ 3. Đất trống -> Plant │
-   └───────────┬───────────┘
-              ▼
-   ┌───────────────────────┐
-   │  THỰC THI HÀNG LOẠT   │
-   │ Gọi Native Action     │ (Xử lý tuần tự trên Main Thread)
-   │ Mỗi chậu cách nhau 5ms│
-   └───────────┬───────────┘
-              ▼
-       ┌──────────────┐
-       │ HOÀN TẤT VÒNG│
-       └──────────────┘
+```text
+Features/Farm/
+├── IFarmService.cs
+├── FarmService.cs
+├── FarmBot.cs
+├── FarmScanner.cs
+├── FarmModels.cs
+├── FarmPolicies.cs
+├── FarmCatalog.cs
+├── FarmModule.cs
+└── UI/
+    ├── FarmView.cs
+    └── FarmViewModel.cs
 ```
 
----
+`Catalog` và static metadata phải cache. `Scanner` chỉ phát hiện state; `Bot` quyết định state transition; `Service` thực thi action.
 
-## III. BẢNG MÃ HÀM IL2CPP NÔNG TRẠI (DUMP.CS)
+## 3. GENERIC PIPELINE
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
-| :--- | :--- | :--- | :--- |
-| **Tưới Nước** | `GardenManager.WaterPlot` | `0x59B1200` | `(thisPtr, uint plotUid)` |
-| **Thu Hoạch** | `GardenManager.HarvestPlot` | `0x59B1450` | `(thisPtr, uint plotUid)` |
-| **Gieo Hạt** | `GardenManager.PlantSeed` | `0x59B1600` | `(thisPtr, uint plotUid, uint seedId)` |
-| **Dọn Cây Hỏng**| `GardenManager.RemovePlot` | `0x59B1800` | `(thisPtr, uint plotUid)` |
+```text
+Observe -> Filter -> Score -> Select -> Validate -> Approach -> Action -> Verify -> Collect/Result -> Cooldown -> Observe
+```
+
+Không dùng sleep cứng. Dùng condition/event/timeout.
+
+## 4. DYNAMIC TARGET SELECTION
+
+Mọi filter/priority phải là data-driven:
+
+```text
+TargetRule
+ ├── Enabled
+ ├── Priority
+ ├── RequiredTags
+ ├── ExcludedTags
+ ├── MinValue / MaxValue
+ └── CustomScore
+```
+
+Có thể thay đổi rule từ UI/schema mà không sửa business code.
+
+## 5. SCAN OPTIMIZATION
+
+- Snapshot entity list một lần cho mỗi cycle.
+- Spatial index/quadtree/grid nếu số entity lớn.
+- Reuse entity buffers.
+- Chỉ rescan khi `SceneVersion`, `EntityRevision` hoặc TTL hết hạn.
+- Khi map mới: ưu tiên warm-up scan và cache metadata trước khi bot bắt đầu hành động.
+
+## 6. ACTIONS
+
+Các action chuẩn của module phải map qua `IGameActionDispatcher`; không hardcode RVA trong feature.
+
+| Action | Native binding |
+|---|---|
+| Water | Resolve từ `IGameBindingProvider` |
+| Plant | Resolve từ binding profile |
+| Harvest | Resolve từ binding profile |
+| Fertilize | Resolve từ binding profile |
+| CollectYield | Resolve từ binding profile |
+
+Mọi binding phải có `GameIdentity`, signature/version và evidence tag.
+
+## 7. STATE MACHINE
+
+Các state phải implement `IState<TContext>` và dùng FSM Core. Không tạo vòng `while(true)` riêng cho feature.
+
+```text
+Idle
+  -> Scanning
+  -> TargetSelected
+  -> Approaching
+  -> Acting
+  -> Verifying
+  -> Collecting/HandlingResult
+  -> Cooldown
+  -> Scanning
+```
+
+Mỗi state có:
+- entry condition;
+- exit condition;
+- timeout;
+- retry policy;
+- cancellation;
+- telemetry.
+
+## 8. FAILURE RECOVERY
+
+Nếu action fail:
+1. Verify target còn tồn tại.
+2. Refresh volatile snapshot.
+3. Retry theo policy giới hạn.
+4. Nếu target stale: bỏ target và rescan.
+5. Nếu platform/game state lỗi: pause module và yêu cầu Core recovery.
+
+Không retry vô hạn.
+
+## 9. UI REQUIREMENTS
+
+View phải tái sử dụng các component chung:
+`FeatureHeader`, `StatusBadge`, `Toggle`, `Slider`, `FilterList`, `TargetPreview`, `StatsCard`, `ActionButton`, `EventLog`.
+
+Không hardcode layout cho từng resolution.
+
+## 10. PERFORMANCE TARGET
+
+Không đặt con số giả nếu chưa benchmark. Dùng baseline đo thực tế:
+- scan p50/p95;
+- action p50/p95;
+- allocations/frame;
+- target selection duration;
+- stale target rate;
+- successful action rate.
+
+## 11. ACCEPTANCE CRITERIA
+
+- Giữ nguyên chức năng DTA_Tool.
+- Có dynamic filter/priority.
+- Không duplicate scanner/cache/dispatcher.
+- Có cache và invalidation.
+- Chuyển platform không sửa module.
+- UI responsive.
+- Regression test cho bug đã biết.

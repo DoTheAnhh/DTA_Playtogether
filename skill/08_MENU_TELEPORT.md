@@ -1,74 +1,106 @@
-# 08: ĐẶC TẢ MENU & MODULE DỊCH CHUYỂN & ĐỔI MAP (TELEPORT & ZONES MODULE)
+# 08 — TELEPORT & MAP/ZONE MODULE
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống dịch chuyển tọa độ và chuyển đổi bản đồ bằng C# & Unity. Phản hồi dưới 0.1ms, triệt tiêu hiện tượng giật lùi vị trí (Anti-Rubberbanding), chuyển đổi bản đồ trực tiếp bằng hàm game nội bộ mà TUYỆT ĐỐI KHÔNG DÙNG NPC, CỔNG PORTAL HAY ĐIỆN THOẠI ẢO.
+## 1. MỤC TIÊU
 
----
+Tập trung vào quản lý vị trí, chuyển vị trí trong map và chuyển zone/map bằng abstraction động. Không phụ thuộc UI, emulator hay hardcoded coordinates.
 
-## I. KIẾN TRÚC MODULE & INTERFACES
+## 2. TWO-LAYER POSITION SYSTEM
 
+### A. In-map position
+- Dùng `IGamePositionProvider` + `IGameActionDispatcher`.
+- Target position là data object, không hardcode trong code.
+- Validate scene/map readiness trước khi apply.
+
+### B. Zone/map transition
+- Dùng `IZoneTransitionProvider`.
+- Không phụ thuộc NPC/portal/phone trong business logic.
+- Binding cụ thể của game chỉ nằm trong `GameBindings` và phải được xác minh từ dump/runtime.
+
+## 3. SERVER-DEFINED TELEPORT LOCATIONS
+
+Server cung cấp vị trí chuẩn:
+```text
+ServerWaypoint
+ ├── Id
+ ├── Name
+ ├── MapId
+ ├── ZoneId
+ ├── Position
+ ├── Rotation
+ ├── Tags
+ ├── SortOrder
+ ├── Version
+ └── Locked
 ```
-src/Client/Features/Teleport/
-├── ITeleportService.cs     # Interface dịch vụ dịch chuyển
-├── TeleportService.cs      # Tương tác IL2CPP set position & zone move
-├── WaypointManager.cs      # Quản lý danh sách điểm lưu (JSON/SQLite)
-├── MapCatalog.cs           # Danh mục bản đồ và TargetMapID
-├── TeleportModels.cs       # Cấu trúc Tọa độ, Waypoint & Zone
-└── TeleportView.cs         # Unity UI View Component
+
+Client chỉ đọc; waypoint do server cấp **không được sửa/xóa ở client**.
+
+## 4. LOCAL USER WAYPOINTS
+
+Người dùng có thể tạo waypoint local:
+```text
+LocalWaypoint
+ ├── LocalId
+ ├── Name
+ ├── MapId
+ ├── Position
+ ├── Rotation
+ ├── Tags
+ └── CreatedAt
 ```
 
-### 1. Interface `ITeleportService`
+Local data lưu local cache/SQLite/file an toàn, không ghi ngược server trừ khi có API riêng.
+
+## 5. POV / CAMERA RULE
+
+Tách camera policy khỏi teleport service:
+- `TeleportMenu` có thể áp dụng POV policy nếu được bật.
+- Feature khác không tự động thừa hưởng POV policy.
+- Mỗi action có `CameraPolicy` explicit.
+
+## 6. DYNAMIC WAYPOINT REGISTRY
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Threading.Tasks;
-
-namespace DTA.Features.Teleport
-{
-    public interface ITeleportService
-    {
-        // Dịch chuyển tức thời cùng bản đồ (Direct Memory & IL2CPP call)
-        Task<bool> TeleportToAsync(Vector3 targetPos);
-        Vector3 GetCurrentPosition();
-
-        // Chuyển bản đồ trực tiếp (Direct Zone Move Hook)
-        Task<bool> SwitchZoneAsync(uint targetMapId, int fromType = 10);
-        uint GetCurrentMapId();
-
-        // Quản lý Waypoints
-        void SaveWaypoint(string name, Vector3 pos);
-        IReadOnlyList<Waypoint> GetWaypoints(uint mapId);
-        bool DeleteWaypoint(string name);
-    }
-}
+IWaypointRegistry
+ ├── GetServerWaypoints()
+ ├── GetLocalWaypoints()
+ ├── Resolve(id)
+ ├── Search(query,tags)
+ └── Invalidate(map/version)
 ```
 
----
+Không tạo `if/else` cho từng waypoint.
 
-## II. HAI CƠ CHẾ DỊCH CHUYỂN BẤT KHẢ XÂM PHẠM
+## 7. MAP CHANGE PIPELINE
 
-### 1. Dịch chuyển cùng bản đồ (In-Map Instant Teleport)
-- Sử dụng hàm nội bộ của Unity Character Controller:
-  `KinematicCharacterMotor.set_TransientPosition(Vector3 value)` tại RVA Offset `0x52F2B20`.
-- Gọi trên Unity Main Thread, đồng thời cập nhật trường `TransientPosition` tại offset `0x100` của struct `KinematicCharacterMotor`.
-- **Cơ chế chống giật lùi (Anti-Rubberband):**
-  + Đặt vận tốc tức thời `Velocity` về `Vector3.Zero` để physics engine không tính gia tốc quán tính cũ.
-  + Cập nhật đồng bộ `Transform.position` để camera Unity bám sát ngay trong frame kế tiếp.
-  + **Fallback Cao Độ Y:** Tự động fallback về `target_y` nếu khu vực NavMesh chưa nạp xong, chống rơi xuống void.
+```text
+Request
+ -> Validate target
+ -> Ensure runtime attached
+ -> Dispatch zone transition
+ -> Wait GameIdentity/MapReady
+ -> Invalidate volatile caches
+ -> Warm-up scanner caches
+ -> Publish MapChangedEvent
+ -> Resume dependent features
+```
 
-### 2. Chuyển bản đồ không NPC / Portal (Direct Zone Move)
-- Gọi hàm nội bộ:
-  `LayerSystem.ConnectToZoneMove(void* this, uint32 targetMapId, int32 fromType, void* serverName, bool useIris, bool useAdapt)` tại RVA Offset `0x5A13410`.
-- **TUYỆT ĐỐI CẤM:** Không dùng NPC, không dùng cổng Portal, không dùng điện thoại ảo.
+Không để feature bắt đầu scan dữ liệu cũ trong map mới.
 
----
+## 8. PERFORMANCE
 
-## III. BẢNG MÃ HÀM IL2CPP DỊCH CHUYỂN (DUMP.CS)
+Map metadata, waypoint catalog và static transform data phải cache. Khi sang map mới, ưu tiên prefetch các dữ liệu ít thay đổi trước; runtime entity scan chạy incremental.
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
-| :--- | :--- | :--- | :--- |
-| **Set Position Tức Thì** | `KinematicCharacterMotor.set_TransientPosition` | `0x52F2B20` | `(thisPtr, Vector3 value)` trên Main Thread |
-| **Chuyển Bản Đồ Trực Tiếp** | `LayerSystem.ConnectToZoneMove` | `0x5A13410` | `(thisPtr, uint mapId, int fromType=10, ...)` |
-| **Vận Tốc Nhân Vật** | Field `BaseVelocity` trong Motor | Offset `0x118` | Set về `Vector3.Zero` khi dịch chuyển |
-| **Map ID Hiện Tại** | `ZoneManager.get_CurrentMapId` | `0x59C2010` | Đọc ID bản đồ đang đứng |
+## 9. UI
+
+Teleport UI gồm:
+- search;
+- favorites;
+- map grouping;
+- tags;
+- server/local badge;
+- recent locations;
+- loading state;
+- disabled state khi map chưa sẵn sàng.
+
+Không hardcode 1 danh sách vị trí trong prefab.

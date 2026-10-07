@@ -1,87 +1,142 @@
-# 03: ĐẶC TẢ MENU & MODULE ĐẬP ĐÁ / KHAI KHOÁNG (MINING MODULE)
+# 03 — MINING MODULE
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống đập đá khai khoáng tự động bằng C# & Unity. Tối ưu thuật toán quét quặng theo bán kính, tự động chọn mục tiêu giá trị cao (Kim cương, Vàng, Đá thiên thạch), di chuyển tức thời không delay, vung cuốc đập vỡ đá thông qua gọi hàm game và tự động nhặt toàn bộ quặng rơi trên mặt đất.
+> Module `Mining` phải giữ workflow của DTA_Tool nhưng được triển khai theo kiến trúc plugin/dynamic chung. Không copy logic từ module khác; dùng Core abstractions.
 
----
-
-## I. KIẾN TRÚC MODULE & INTERFACES
-
-```
-src/Client/Features/Mining/
-├── IMiningService.cs       # Interface dịch vụ đập đá
-├── MiningService.cs        # Tương tác IL2CPP & quản lý controller
-├── MiningBot.cs            # State Machine điều khiển chu trình đập đá
-├── OreScanner.cs           # Quét và phân loại quặng từ bộ nhớ
-├── MiningModels.cs         # Cấu trúc dữ liệu Quặng, Tùy chọn & Thống kê
-└── MiningView.cs           # Unity UI View Component
-```
-
-### 1. Interface `IMiningService`
+## 1. CONTRACT
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Threading.Tasks;
-
-namespace DTA.Features.Mining
+public interface IMiningService : IFeatureService
 {
-    public interface IMiningService
-    {
-        // Các hành động gọi hàm game trực tiếp
-        Task<bool> SwingPickaxAsync();                   // Vung cuốc đập đá
-        Task<bool> PickOreItemAsync(uint objectUid);     // Nhặt quặng rơi
-        Task<bool> RepairPickaxAsync();                  // Tự sửa cuốc khi hỏng
-        Task<bool> TeleportToOreAsync(Vector3 pos);      // Tiếp cận quặng tức thì
-
-        // Quét và đọc dữ liệu quặng từ game
-        IReadOnlyList<OreEntity> ScanOresAround(float radius);
-        OreEntity GetTargetOre();
-        bool IsPickaxBroken();
-        bool IsMiningAnimationRunning();
-    }
+    ValueTask<FeatureResult> ExecuteAsync(MiningCommand command, CancellationToken ct);
+    ValueTask<MiningSnapshot> ReadSnapshotAsync(CancellationToken ct);
 }
 ```
 
----
+Service không phụ thuộc Unity View. View chỉ bind state/command.
 
-## II. QUY TRÌNH STATE MACHINE KHAI KHOÁNG (MINING FSM)
+## 2. MODULE STRUCTURE
 
-```
-       ┌──────────────┐
-       │   SCAN_ORES  │ (Quét toàn bộ quặng trong bán kính)
-       └──────┬───────┘
-              ▼
-       ┌──────────────┐
-       │ SELECT_TARGET│ (Ưu tiên: Kim cương > Vàng > Thiên thạch > Thường)
-       └──────┬───────┘
-              ▼
-       ┌──────────────┐
-       │  APPROACH    │ (Dịch chuyển tới tọa độ mỏ đá qua TransientPosition)
-       └──────┬───────┘
-              ▼
-       ┌──────────────┐
-       │ SWING_PICKAX │ (Gọi PickaxController.OnClick_Button(0))
-       └──────┬───────┘
-              ├──────────[Đá chưa vỡ]──────────────┐ (Lặp lại vung cuốc)
-              ▼ [Đá vỡ]                            │
-       ┌──────────────┐                            │
-       │  COLLECT_ORE │ (Gọi OnPickFieldObject)    │
-       └──────┬───────┘                            │
-              ▼                                    │
-       ┌──────────────┐                            │
-       │ CHECK_REPAIR │ (Kiểm tra độ bền cuốc)     │
-       └──────────────┴────────────────────────────┘
+```text
+Features/Mining/
+├── IMiningService.cs
+├── MiningService.cs
+├── MiningBot.cs
+├── OreScanner.cs
+├── MiningModels.cs
+├── MiningPolicies.cs
+├── MiningCatalog.cs
+├── MiningModule.cs
+└── UI/
+    ├── MiningView.cs
+    └── MiningViewModel.cs
 ```
 
----
+`Catalog` và static metadata phải cache. `Scanner` chỉ phát hiện state; `Bot` quyết định state transition; `Service` thực thi action.
 
-## III. BẢNG MÃ HÀM IL2CPP ĐẬP ĐÁ (DUMP.CS)
+## 3. GENERIC PIPELINE
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
-| :--- | :--- | :--- | :--- |
-| **Vung Cuốc** | `PickaxController.OnClick_Button` | `0x57D4500` | `(thisPtr, int actionType=0)` trên Main Thread |
-| **Nhặt Quặng** | `PlayerActor.OnPickFieldObject` | `0x5821010` | `(thisPtr, uint objectUid)` nhặt khoáng sản rơi |
-| **Trạng Thái Cuốc** | Field `m_eState` trong `PickaxController` | Offset `0x98` | Kiểm tra hoàn tất animation vung cuốc |
-| **Độ Bền Cuốc** | Field `m_CurrentDurability` | Offset `0xA0` | Khi bằng 0 kích hoạt sửa chữa |
-| **Tọa Độ Mỏ Đá** | `FieldOreObject.get_transform().get_position()` | `0x52E3100` | Lấy tọa độ thế giới (Vector3) mỏ đá |
+```text
+Observe -> Filter -> Score -> Select -> Validate -> Approach -> Action -> Verify -> Collect/Result -> Cooldown -> Observe
+```
+
+Không dùng sleep cứng. Dùng condition/event/timeout.
+
+## 4. DYNAMIC TARGET SELECTION
+
+Mọi filter/priority phải là data-driven:
+
+```text
+TargetRule
+ ├── Enabled
+ ├── Priority
+ ├── RequiredTags
+ ├── ExcludedTags
+ ├── MinValue / MaxValue
+ └── CustomScore
+```
+
+Có thể thay đổi rule từ UI/schema mà không sửa business code.
+
+## 5. SCAN OPTIMIZATION
+
+- Snapshot entity list một lần cho mỗi cycle.
+- Spatial index/quadtree/grid nếu số entity lớn.
+- Reuse entity buffers.
+- Chỉ rescan khi `SceneVersion`, `EntityRevision` hoặc TTL hết hạn.
+- Khi map mới: ưu tiên warm-up scan và cache metadata trước khi bot bắt đầu hành động.
+
+## 6. ACTIONS
+
+Các action chuẩn của module phải map qua `IGameActionDispatcher`; không hardcode RVA trong feature.
+
+| Action | Native binding |
+|---|---|
+| SwingPickaxe | Resolve từ `IGameBindingProvider` |
+| CollectOre | Resolve từ binding profile |
+| RepairPickaxe | Resolve từ binding profile |
+| SelectOre | Resolve từ binding profile |
+| ApproachOre | Resolve từ binding profile |
+
+Mọi binding phải có `GameIdentity`, signature/version và evidence tag.
+
+## 7. STATE MACHINE
+
+Các state phải implement `IState<TContext>` và dùng FSM Core. Không tạo vòng `while(true)` riêng cho feature.
+
+```text
+Idle
+  -> Scanning
+  -> TargetSelected
+  -> Approaching
+  -> Acting
+  -> Verifying
+  -> Collecting/HandlingResult
+  -> Cooldown
+  -> Scanning
+```
+
+Mỗi state có:
+- entry condition;
+- exit condition;
+- timeout;
+- retry policy;
+- cancellation;
+- telemetry.
+
+## 8. FAILURE RECOVERY
+
+Nếu action fail:
+1. Verify target còn tồn tại.
+2. Refresh volatile snapshot.
+3. Retry theo policy giới hạn.
+4. Nếu target stale: bỏ target và rescan.
+5. Nếu platform/game state lỗi: pause module và yêu cầu Core recovery.
+
+Không retry vô hạn.
+
+## 9. UI REQUIREMENTS
+
+View phải tái sử dụng các component chung:
+`FeatureHeader`, `StatusBadge`, `Toggle`, `Slider`, `FilterList`, `TargetPreview`, `StatsCard`, `ActionButton`, `EventLog`.
+
+Không hardcode layout cho từng resolution.
+
+## 10. PERFORMANCE TARGET
+
+Không đặt con số giả nếu chưa benchmark. Dùng baseline đo thực tế:
+- scan p50/p95;
+- action p50/p95;
+- allocations/frame;
+- target selection duration;
+- stale target rate;
+- successful action rate.
+
+## 11. ACCEPTANCE CRITERIA
+
+- Giữ nguyên chức năng DTA_Tool.
+- Có dynamic filter/priority.
+- Không duplicate scanner/cache/dispatcher.
+- Có cache và invalidation.
+- Chuyển platform không sửa module.
+- UI responsive.
+- Regression test cho bug đã biết.

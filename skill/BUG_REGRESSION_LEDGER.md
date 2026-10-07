@@ -1,18 +1,84 @@
-# SỔ TAY QUẢN LÝ LỖI & PHÒNG CHỐNG TÁI PHÁT (BUG REGRESSION LEDGER)
+# BUG & REGRESSION LEDGER
 
-> **Mục tiêu:** Lưu trữ toàn bộ các lỗi tiềm ẩn đã từng xuất hiện trong quá trình phát triển tool Play Together, ghi rõ nguyên nhân gốc rễ (Root Cause), và quy chuẩn giải pháp triệt để bằng C# & Unity để đảm bảo **100% không bao giờ tái phát (Zero Regression)**.
+> Đây là ledger sống. Mỗi bug phải có nguyên nhân gốc, fix, regression test và trạng thái xác minh.
 
----
+## 1. FORMAT
 
-## BẢNG TỔNG HỢP CÁC LỖI TIỀM ẨN & GIẢI PHÁP C# & UNITY
+```text
+ID:
+Module:
+Platform:
+Symptom:
+Root Cause:
+Fix:
+Regression Test:
+Status: OPEN / FIXED / VERIFIED
+Verified Build:
+Notes:
+```
 
-| Mã Lỗi | Hiện Tượng & Triệu Chứng Cũ | Nguyên Nhân Gốc Rễ (Root Cause) | Giải Pháp Triệt Để Bằng C# & Unity | Trạng Thái |
-| :--- | :--- | :--- | :--- | :--- |
-| **BUG-01** | `GameError: Mất kết nối ADB với giả lập` khi chạy bot lâu hoặc đọc navmesh. | Dùng subprocess gọi ADB shell (`/proc/<pid>/mem`, `dd`, `xxd`) qua đường ống pipe. Khi tải cao hoặc tiến trình ADB bị nghẽn buffer, pipe bị đứt kết nối. | **Loại bỏ hoàn toàn ADB.** Sử dụng Win32 API (`ReadProcessMemory` trực tiếp trên tiến trình giả lập) hoặc In-Process Unity Plugin (`.so`/`.dll`). Độ trễ giảm từ 50ms xuống < 0.1ms, không bao giờ mất kết nối. | **FIXED & IMMUNE** |
-| **BUG-02** | Giật cần câu bị chậm (Reel Delay), cá cắn nhưng giật hụt, cá chạy mất. | Bot query liên tục thông tin Actor, HUD, Tool trên mỗi frame làm phát sinh độ trễ 300-500ms trước khi kích hoạt lệnh `Reel`. | Luồng **High-Speed Monitor** đọc trực tiếp cờ `m_bBite` (Offset `0xA4`) tại tần số 120-240 FPS hoặc trong Unity `FixedUpdate`. Kích hoạt lệnh giật tức thì (< 1ms) qua `FishingPoleController.OnClick_Button(0)` trên Main Thread. | **FIXED & IMMUNE** |
-| **BUG-03** | Không gọi được nút OK / Popup Dialog ("vẫn k gọi đc hàm action OK"). | Gọi hàm logic nội bộ hoặc gọi ngoài Unity Main Thread khiến NGUI event loop không nhận diện được sự kiện bấm nút. | Trỏ thẳng vào instance `UIButton` của nút OK, gọi `UIButton.OnClick()` (RVA `0x524D90C`) hoặc dispatch `UICamera.Notify` trực tiếp trên Unity Main Thread qua `GameActionDispatcher`. | **FIXED & IMMUNE** |
-| **BUG-04** | Dịch chuyển (Teleport) làm nhân vật rơi xuyên map hoặc crash tool do NavMesh. | Đọc hàng ngàn polygon NavMesh qua pipe ADB gây tràn bộ đệm; hoặc bề mặt Y chưa nạp kịp làm nhân vật rơi xuống void. | Quản lý NavMesh trong RAM C#, tính Point-in-Polygon tức thời. Tự động fallback về `target_y` nếu khu vực chưa sẵn sàng. Set `KinematicCharacterMotor.set_TransientPosition` và triệt tiêu vận tốc cũ (`Vector3.Zero`). | **FIXED & IMMUNE** |
-| **BUG-05** | Tool giật lag theo chu kỳ, FPS sụt giảm (GC Stutter). | Sinh chuỗi và byte array liên tục trong vòng lặp bot của ngôn ngữ cũ làm kích hoạt Garbage Collector (GC) thu gom rác định kỳ. | **Zero GC Allocation Architecture:** Sử dụng `Span<T>`, `Memory<T>`, `ArrayPool<T>`, `struct` trên mọi hot-path. Tái sử dụng buffer cố định, GC allocation = 0 byte/frame. | **FIXED & IMMUNE** |
-| **BUG-06** | Văng game / SIGSEGV khi gọi hàm nội bộ IL2CPP từ background thread. | Unity Engine và IL2CPP Boehm GC yêu cầu các hàm thay đổi trạng thái đối tượng phải chạy trên Unity Main Thread. | Toàn bộ thao tác gọi hàm game bắt buộc phải đóng gói qua `GameActionDispatcher` để thực thi an toàn trong nhịp `Update` của Unity Main Thread. | **FIXED & IMMUNE** |
-| **BUG-07** | Deadlock treo tool khi nhiều luồng truy cập bot state và giao diện. | Sử dụng mutex lồng nhau không theo thứ tự cố định, chờ đợi I/O trong khi đang nắm giữ lock. | Chuẩn hóa thứ tự lock nghiêm ngặt: `UI_Lock` -> `Bot_Lock` -> `Cache_Lock` -> `Memory_Lock`. Sử dụng `ReaderWriterLockSlim` có timeout tối đa 2000ms và `ConcurrentQueue<T>` không khóa. | **FIXED & IMMUNE** |
-| **BUG-08** | Bị phát hiện tài khoản chia sẻ, crack tool qua Fiddler / Proxy. | Giao thức truyền thông cũ không mã hóa hoặc dùng HTTP trần. | Giao thức TLS 1.3 / WSS với mã hóa nhị phân AES-256-GCM + ECDSA, Certificate Pinning, Hardware ID (HWID) khoá cứng theo linh kiện máy. | **FIXED & IMMUNE** |
+## 2. BUG CLASSES CẦN THEO DÕI
+
+### R001 — Platform attach thất bại
+- Scope: LDPlayer/MEmu/APK.
+- Requirement: adapter discovery không được làm crash app.
+- Test: mock từng adapter + nhiều instance.
+
+### R002 — Scan map mới chậm
+- Root-cause candidates: cold cache, full scan, stale pointer.
+- Fix pattern: invalidate volatile state -> warm static cache -> incremental scan.
+
+### R003 — Action bị bỏ qua
+- Kiểm tra dispatcher queue, duplicate suppression, target revision và action precondition.
+- Không chữa bằng cách spam action.
+
+### R004 — Dialog/Result không đóng
+- Kiểm tra state machine và verified game binding.
+- Không hardcode UI object path.
+
+### R005 — Target stale
+- Target phải có entity revision/UID + validation trước action.
+
+### R006 — Teleport/map change dùng dữ liệu cũ
+- Bắt buộc MapChangedEvent invalidation.
+
+### R007 — UI lag khi bật nhiều feature
+- Kiểm tra layout rebuild, polling, allocation và render count.
+
+### R008 — Memory/GC spike
+- Profile allocations/frame, buffer reuse, LINQ/reflection/string formatting.
+
+### R009 — Server overload
+- Kiểm tra cache hit rate, duplicate request, database query per request.
+- Mutation phải update cache ngay.
+
+### R010 — Config/schema incompatible
+- Validate version/schema trước khi apply; fallback cached-known-good.
+
+## 3. PLATFORM MATRIX
+
+Mỗi regression quan trọng phải ghi rõ:
+`Windows + LDPlayer`, `Windows + MEmu`, `Android APK (future)`.
+
+## 4. RELEASE GATE
+
+Không release khi:
+- P0/P1 open;
+- build không reproducible;
+- cache corruption chưa có fallback;
+- platform adapter chưa pass smoke test;
+- UI có regression workflow cũ.
+
+## 5. PERFORMANCE REGRESSION
+
+Theo dõi baseline:
+- startup;
+- attach;
+- first scan;
+- map transition;
+- action latency;
+- frame time;
+- GC;
+- network RTT.
+
+Chỉ kết luận regression dựa trên benchmark/profiling, không dựa cảm giác.

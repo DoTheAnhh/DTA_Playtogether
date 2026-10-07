@@ -1,65 +1,142 @@
-# 04: ĐẶC TẢ MENU & MODULE BẮT CÔN TRÙNG (INSECT MODULE)
+# 04 — INSECT MODULE
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống bắt côn trùng tự động bằng C# & Unity. Tối ưu thuật toán quét bọ, dự đoán vector vận tốc và hướng bay (Velocity Trajectory Prediction), tiếp cận góc đón đầu chính xác tuyệt đối, vung vợt bắt bọ thông qua gọi hàm game và tự đóng bảng kết quả ngay lập tức.
+> Module `Insect` phải giữ workflow của DTA_Tool nhưng được triển khai theo kiến trúc plugin/dynamic chung. Không copy logic từ module khác; dùng Core abstractions.
 
----
-
-## I. KIẾN TRÚC MODULE & INTERFACES
-
-```
-src/Client/Features/Insect/
-├── IInsectService.cs       # Interface dịch vụ bắt bọ
-├── InsectService.cs        # Tương tác IL2CPP & quản lý net controller
-├── InsectBot.cs            # State Machine điều khiển chu trình bắt bọ
-├── InsectPredictor.cs      # Dự đoán tọa độ đón đầu côn trùng đang bay
-├── InsectModels.cs         # Cấu trúc Côn trùng, Bộ lọc phẩm cấp & Thống kê
-└── InsectView.cs           # Unity UI View Component
-```
-
-### 1. Interface `IInsectService`
+## 1. CONTRACT
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Threading.Tasks;
-
-namespace DTA.Features.Insect
+public interface IInsectService : IFeatureService
 {
-    public interface IInsectService
-    {
-        // Các hành động gọi hàm game trực tiếp
-        Task<bool> SwingNetAsync();                     // Vung vợt bắt bọ
-        Task<bool> ApproachInsectAsync(Vector3 targetPos, float yawAngle); // Đón đầu
-        Task<bool> FreezeInsectAsync(uint insectUid);   // Đóng băng tốc độ bay
-        Task<bool> RepairNetAsync();                    // Sửa vợt khi hỏng
-        Task<bool> CloseResultDialogAsync();            // Đóng bảng nhận bọ
-
-        // Dò tìm và lọc côn trùng từ bộ nhớ
-        IReadOnlyList<InsectEntity> ScanInsectsAround(float radius);
-        InsectEntity GetBestTargetInsect();
-        bool IsNetBroken();
-    }
+    ValueTask<FeatureResult> ExecuteAsync(InsectCommand command, CancellationToken ct);
+    ValueTask<InsectSnapshot> ReadSnapshotAsync(CancellationToken ct);
 }
 ```
 
----
+Service không phụ thuộc Unity View. View chỉ bind state/command.
 
-## II. THUẬT TOÁN ĐÓN ĐẦU & VUNG VỢT CHÍNH XÁC (INTERCEPT ALGORITHM)
+## 2. MODULE STRUCTURE
 
-Khác với quặng đá đứng yên, côn trùng liên tục di chuyển:
-1. **Velocity Tracking:** Đọc liên tục vị trí $P(t)$ và $P(t - \Delta t)$ để tính vector vận tốc $\vec{v}$.
-2. **Intercept Point Calculation:** Tính điểm đón đầu $P_{\text{target}} = P_{\text{current}} + \vec{v} \cdot t_{\text{swing}}$ (với $t_{\text{swing}} \approx 120\text{ms}$).
-3. **Approach & Orientation:** Dịch chuyển người chơi tới vị trí cách $P_{\text{target}}$ khoảng $1.8\text{m}$ theo hướng đón đầu, đồng thời set góc quay nhân vật hướng thẳng vào bọ.
-4. **Trigger Action:** Gọi ngay `InsectNetController.OnClick_Button(0)` trên Main Thread.
+```text
+Features/Insect/
+├── IInsectService.cs
+├── InsectService.cs
+├── InsectBot.cs
+├── InsectScanner.cs
+├── InsectModels.cs
+├── InsectPolicies.cs
+├── InsectCatalog.cs
+├── InsectModule.cs
+└── UI/
+    ├── InsectView.cs
+    └── InsectViewModel.cs
+```
 
----
+`Catalog` và static metadata phải cache. `Scanner` chỉ phát hiện state; `Bot` quyết định state transition; `Service` thực thi action.
 
-## III. BẢNG MÃ HÀM IL2CPP BẮT CÔN TRÙNG (DUMP.CS)
+## 3. GENERIC PIPELINE
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
-| :--- | :--- | :--- | :--- |
-| **Vung Vợt** | `InsectNetController.OnClick_Button` | `0x57D3800` | `(thisPtr, int actionType=0)` trên Main Thread |
-| **Trạng Thái Vợt** | Field `m_eState` trong `InsectNetController` | Offset `0x98` | Trạng thái vung vợt |
-| **Độ Bền Vợt** | Field `m_CurrentDurability` | Offset `0xA0` | Độ bền vợt |
-| **Đóng Dialog Bọ** | `InsectResultDialog.OnClick_OK` | `0x57E5400` | Đóng bảng popup bắt được bọ |
+```text
+Observe -> Filter -> Score -> Select -> Validate -> Approach -> Action -> Verify -> Collect/Result -> Cooldown -> Observe
+```
+
+Không dùng sleep cứng. Dùng condition/event/timeout.
+
+## 4. DYNAMIC TARGET SELECTION
+
+Mọi filter/priority phải là data-driven:
+
+```text
+TargetRule
+ ├── Enabled
+ ├── Priority
+ ├── RequiredTags
+ ├── ExcludedTags
+ ├── MinValue / MaxValue
+ └── CustomScore
+```
+
+Có thể thay đổi rule từ UI/schema mà không sửa business code.
+
+## 5. SCAN OPTIMIZATION
+
+- Snapshot entity list một lần cho mỗi cycle.
+- Spatial index/quadtree/grid nếu số entity lớn.
+- Reuse entity buffers.
+- Chỉ rescan khi `SceneVersion`, `EntityRevision` hoặc TTL hết hạn.
+- Khi map mới: ưu tiên warm-up scan và cache metadata trước khi bot bắt đầu hành động.
+
+## 6. ACTIONS
+
+Các action chuẩn của module phải map qua `IGameActionDispatcher`; không hardcode RVA trong feature.
+
+| Action | Native binding |
+|---|---|
+| SwingNet | Resolve từ `IGameBindingProvider` |
+| CollectInsect | Resolve từ binding profile |
+| RepairNet | Resolve từ binding profile |
+| PredictIntercept | Resolve từ binding profile |
+| ApproachInsect | Resolve từ binding profile |
+
+Mọi binding phải có `GameIdentity`, signature/version và evidence tag.
+
+## 7. STATE MACHINE
+
+Các state phải implement `IState<TContext>` và dùng FSM Core. Không tạo vòng `while(true)` riêng cho feature.
+
+```text
+Idle
+  -> Scanning
+  -> TargetSelected
+  -> Approaching
+  -> Acting
+  -> Verifying
+  -> Collecting/HandlingResult
+  -> Cooldown
+  -> Scanning
+```
+
+Mỗi state có:
+- entry condition;
+- exit condition;
+- timeout;
+- retry policy;
+- cancellation;
+- telemetry.
+
+## 8. FAILURE RECOVERY
+
+Nếu action fail:
+1. Verify target còn tồn tại.
+2. Refresh volatile snapshot.
+3. Retry theo policy giới hạn.
+4. Nếu target stale: bỏ target và rescan.
+5. Nếu platform/game state lỗi: pause module và yêu cầu Core recovery.
+
+Không retry vô hạn.
+
+## 9. UI REQUIREMENTS
+
+View phải tái sử dụng các component chung:
+`FeatureHeader`, `StatusBadge`, `Toggle`, `Slider`, `FilterList`, `TargetPreview`, `StatsCard`, `ActionButton`, `EventLog`.
+
+Không hardcode layout cho từng resolution.
+
+## 10. PERFORMANCE TARGET
+
+Không đặt con số giả nếu chưa benchmark. Dùng baseline đo thực tế:
+- scan p50/p95;
+- action p50/p95;
+- allocations/frame;
+- target selection duration;
+- stale target rate;
+- successful action rate.
+
+## 11. ACCEPTANCE CRITERIA
+
+- Giữ nguyên chức năng DTA_Tool.
+- Có dynamic filter/priority.
+- Không duplicate scanner/cache/dispatcher.
+- Có cache và invalidation.
+- Chuyển platform không sửa module.
+- UI responsive.
+- Regression test cho bug đã biết.

@@ -1,62 +1,142 @@
-# 07: ĐẶC TẢ MENU & MODULE THU THẬP VẬT PHẨM (COLLECT MODULE)
+# 07 — COLLECT MODULE
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống thu thập vật phẩm trên bản đồ (Cành cây, Vỏ sò, Rác biển, Hoa dại, Vật phẩm sự kiện) bằng C# & Unity. Tối ưu thuật toán tìm đường đi ngắn nhất (Shortest Path TSP), tự động nhặt thông qua hàm native `OnPickFieldObject` mà không cần click chạm màn hình.
+> Module `Collect` phải giữ workflow của DTA_Tool nhưng được triển khai theo kiến trúc plugin/dynamic chung. Không copy logic từ module khác; dùng Core abstractions.
 
----
-
-## I. KIẾN TRÚC MODULE & INTERFACES
-
-```
-src/Client/Features/Collect/
-├── ICollectService.cs      # Interface dịch vụ thu thập
-├── CollectService.cs       # Tương tác IL2CPP & quản lý nhặt đồ
-├── CollectBot.cs           # State Machine điều khiển chu trình nhặt
-├── PathOptimizer.cs        # Thuật toán TSP tối ưu thứ tự nhặt đồ
-├── CollectModels.cs        # Dữ liệu Vật thể, Bộ lọc loại & Thống kê
-└── CollectView.cs          # Unity UI View Component
-```
-
-### 1. Interface `ICollectService`
+## 1. CONTRACT
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Threading.Tasks;
-
-namespace DTA.Features.Collect
+public interface ICollectService : IFeatureService
 {
-    public interface ICollectService
-    {
-        // Các hành động gọi hàm game trực tiếp
-        Task<bool> PickObjectAsync(uint objectUid);       // Gọi OnPickFieldObject
-        Task<bool> TeleportToObjectAsync(Vector3 pos);    // Dịch chuyển tới vật thể
-        Task<bool> CloseResultDialogAsync();              // Đóng dialog nhận đồ
-
-        // Quét thực thể từ bộ nhớ game
-        IReadOnlyList<FieldObjectEntity> ScanFieldObjects(float radius);
-        void SetCollectFilter(in CollectFilter filter);
-    }
+    ValueTask<FeatureResult> ExecuteAsync(CollectCommand command, CancellationToken ct);
+    ValueTask<CollectSnapshot> ReadSnapshotAsync(CancellationToken ct);
 }
 ```
 
----
+Service không phụ thuộc Unity View. View chỉ bind state/command.
 
-## II. THUẬT TOÁN TỐI ƯU HÓA ĐƯỜNG ĐI (SHORTEST PATH ROUTE)
+## 2. MODULE STRUCTURE
 
-1. **Quét và lọc:** Quét toàn bộ `FieldObject` có trạng thái active trên map, lọc theo cấu hình người dùng (ví dụ: chỉ nhặt Rác sự kiện và Vỏ sò hiếm).
-2. **Quy hoạch tuyến đường (Greedy Nearest Neighbor / 2-Opt):**
-   - Sắp xếp thứ tự các điểm nhặt $P_1 \to P_2 \to \dots \to P_n$ sao cho tổng khoảng cách di chuyển nhỏ nhất.
-3. **Thực thi thần tốc:**
-   - Dịch chuyển tới $P_i$ qua `KinematicCharacterMotor.set_TransientPosition`.
-   - Gọi `OnPickFieldObject(localPlayerActor, uid)` trên Main Thread.
-   - Xác nhận vật thể biến mất khỏi bộ nhớ -> Nhảy ngay lập tức sang $P_{i+1}$.
+```text
+Features/Collect/
+├── ICollectService.cs
+├── CollectService.cs
+├── CollectBot.cs
+├── ItemScanner.cs
+├── CollectModels.cs
+├── CollectPolicies.cs
+├── CollectCatalog.cs
+├── CollectModule.cs
+└── UI/
+    ├── CollectView.cs
+    └── CollectViewModel.cs
+```
 
----
+`Catalog` và static metadata phải cache. `Scanner` chỉ phát hiện state; `Bot` quyết định state transition; `Service` thực thi action.
 
-## III. BẢNG MÃ HÀM IL2CPP THU THẬP (DUMP.CS)
+## 3. GENERIC PIPELINE
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
-| :--- | :--- | :--- | :--- |
-| **Nhặt Vật Thể** | `PlayerActor.OnPickFieldObject` | `0x5821010` | `(thisPtr, uint objectUid)` |
-| **Danh Sách Vật Thể**| `FieldObjectManager.m_ActiveObjects` | Offset `0x48` | Mảng các FieldObject đang tồn tại trên bản đồ |
+```text
+Observe -> Filter -> Score -> Select -> Validate -> Approach -> Action -> Verify -> Collect/Result -> Cooldown -> Observe
+```
+
+Không dùng sleep cứng. Dùng condition/event/timeout.
+
+## 4. DYNAMIC TARGET SELECTION
+
+Mọi filter/priority phải là data-driven:
+
+```text
+TargetRule
+ ├── Enabled
+ ├── Priority
+ ├── RequiredTags
+ ├── ExcludedTags
+ ├── MinValue / MaxValue
+ └── CustomScore
+```
+
+Có thể thay đổi rule từ UI/schema mà không sửa business code.
+
+## 5. SCAN OPTIMIZATION
+
+- Snapshot entity list một lần cho mỗi cycle.
+- Spatial index/quadtree/grid nếu số entity lớn.
+- Reuse entity buffers.
+- Chỉ rescan khi `SceneVersion`, `EntityRevision` hoặc TTL hết hạn.
+- Khi map mới: ưu tiên warm-up scan và cache metadata trước khi bot bắt đầu hành động.
+
+## 6. ACTIONS
+
+Các action chuẩn của module phải map qua `IGameActionDispatcher`; không hardcode RVA trong feature.
+
+| Action | Native binding |
+|---|---|
+| CollectItem | Resolve từ `IGameBindingProvider` |
+| SelectTarget | Resolve từ binding profile |
+| BuildRoute | Resolve từ binding profile |
+| ApproachItem | Resolve từ binding profile |
+| FinishCollect | Resolve từ binding profile |
+
+Mọi binding phải có `GameIdentity`, signature/version và evidence tag.
+
+## 7. STATE MACHINE
+
+Các state phải implement `IState<TContext>` và dùng FSM Core. Không tạo vòng `while(true)` riêng cho feature.
+
+```text
+Idle
+  -> Scanning
+  -> TargetSelected
+  -> Approaching
+  -> Acting
+  -> Verifying
+  -> Collecting/HandlingResult
+  -> Cooldown
+  -> Scanning
+```
+
+Mỗi state có:
+- entry condition;
+- exit condition;
+- timeout;
+- retry policy;
+- cancellation;
+- telemetry.
+
+## 8. FAILURE RECOVERY
+
+Nếu action fail:
+1. Verify target còn tồn tại.
+2. Refresh volatile snapshot.
+3. Retry theo policy giới hạn.
+4. Nếu target stale: bỏ target và rescan.
+5. Nếu platform/game state lỗi: pause module và yêu cầu Core recovery.
+
+Không retry vô hạn.
+
+## 9. UI REQUIREMENTS
+
+View phải tái sử dụng các component chung:
+`FeatureHeader`, `StatusBadge`, `Toggle`, `Slider`, `FilterList`, `TargetPreview`, `StatsCard`, `ActionButton`, `EventLog`.
+
+Không hardcode layout cho từng resolution.
+
+## 10. PERFORMANCE TARGET
+
+Không đặt con số giả nếu chưa benchmark. Dùng baseline đo thực tế:
+- scan p50/p95;
+- action p50/p95;
+- allocations/frame;
+- target selection duration;
+- stale target rate;
+- successful action rate.
+
+## 11. ACCEPTANCE CRITERIA
+
+- Giữ nguyên chức năng DTA_Tool.
+- Có dynamic filter/priority.
+- Không duplicate scanner/cache/dispatcher.
+- Có cache và invalidation.
+- Chuyển platform không sửa module.
+- UI responsive.
+- Regression test cho bug đã biết.

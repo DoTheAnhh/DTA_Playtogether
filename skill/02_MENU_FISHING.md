@@ -1,98 +1,142 @@
-# 02: ĐẶC TẢ MENU & MODULE CÂU CÁ (FISHING MODULE)
+# 02 — FISHING MODULE
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống câu cá tự động bằng C# & Unity. Tối ưu hóa zero-latency (phản xạ giật cá < 1ms ngay khi xuất hiện cờ cắn `m_bBite` / dấu chấm than), loại bỏ hoàn toàn việc click màn hình hay đọc HUD dư thừa, tích hợp bộ lọc cá thông minh đa tầng và tự động nhận thưởng/bán cá siêu tốc.
+> Module `Fishing` phải giữ workflow của DTA_Tool nhưng được triển khai theo kiến trúc plugin/dynamic chung. Không copy logic từ module khác; dùng Core abstractions.
 
----
-
-## I. KIẾN TRÚC MODULE & INTERFACES
-
-Mỗi chức năng nằm trọn trong namespace và thư mục riêng `Features/Fishing/`:
-
-```
-src/Client/Features/Fishing/
-├── IFishingService.cs      # Interface dịch vụ câu cá
-├── FishingService.cs       # Logic nghiệp vụ & tương tác IL2CPP
-├── FishingBot.cs           # State Machine điều khiển chu trình câu
-├── FishingCatalog.cs       # Tra cứu thông tin cá (Bóng 1-7, Nền 1-5, Biến thể)
-├── FishingModels.cs        # Cấu trúc dữ liệu Tùy chọn (Options) & Thống kê (Stats)
-└── FishingView.cs          # Giao diện điều khiển (Unity UI View Component)
-```
-
-### 1. Interface `IFishingService`
+## 1. CONTRACT
 
 ```csharp
-using System;
-using System.Threading.Tasks;
-
-namespace DTA.Features.Fishing
+public interface IFishingService : IFeatureService
 {
-    public interface IFishingService
-    {
-        // Các hành động gọi hàm game trực tiếp (Unity Main Thread)
-        Task<bool> CastRodAsync();                     // Thả cần (OnClick_Button(0))
-        Task<bool> ReelInAsync();                      // Giật cần (OnClick_Button(0))
-        Task<bool> KeepFishAsync();                    // Bảo quản cá
-        Task<bool> SellFishAsync();                    // Bán nhanh cá
-        Task<bool> OpenBoxAsync();                     // Mở lon / hộp quà
-        Task<bool> RepairRodAsync();                   // Sửa cần câu bị hỏng
-
-        // Đọc trạng thái từ bộ nhớ game siêu tốc
-        FishingPoleState GetPoleState();               // Idle, Casting, WaitingBite, Biting, Reeling
-        FishCurrentInfo GetCurrentFishInfo();          // Đọc ID, kích thước bóng, loại cá đang cắn
-        bool IsRodBroken();                            // Kiểm tra độ bền cần
-        bool IsResultDialogOpen();                     // Bảng kết quả đã mở chưa
-    }
+    ValueTask<FeatureResult> ExecuteAsync(FishingCommand command, CancellationToken ct);
+    ValueTask<FishingSnapshot> ReadSnapshotAsync(CancellationToken ct);
 }
 ```
 
----
+Service không phụ thuộc Unity View. View chỉ bind state/command.
 
-## II. QUY TRÌNH STATE MACHINE TỐI ƯU CỰC HẠN (ZERO-LATENCY FSM)
+## 2. MODULE STRUCTURE
 
-```
-       ┌──────────────┐
-       │   INIT_ROD   │◄───────────────────────────┐
-       └──────┬───────┘                            │
-              ▼                                    │
-       ┌──────────────┐                            │
-       │   CASTING    │ (Gọi OnClick_Button(0))     │
-       └──────┬───────┘                            │
-              ▼                                    │
-       ┌──────────────┐                            │
-       │ WAITING_BITE │ (Quét bộ nhớ 240 FPS)      │
-       └──────┬───────┘                            │
-              ▼                                    │
-  ┌───────────────────────┐                        │
-  │     FISH_APPROACH     │ (Phát hiện cá lại gần) │
-  │ Lọc ID / Bóng cá 1-7  │                        │
-  └───────────┬───────────┘                        │
-              ├──────────[Không đạt bộ lọc] ───────┤ (Rút cần / Thả lại)
-              ▼ [Đạt bộ lọc]                       │
-       ┌──────────────┐                            │
-       │  BITE_HOOK   │ (Cờ Bite = 1 -> Giật)      │
-       └──────┬───────┘ (ReelIn < 1ms)             │
-              ▼                                    │
-       ┌──────────────┐                            │
-       │ HANDLE_RESULT│ (Đọc bảng kết quả)         │
-       │  Bán / Giữ   │ (SellFish / KeepFish)      │
-       └──────┬───────┘                            │
-              ▼                                    │
-       ┌──────────────┐                            │
-       │ REPAIR_CHECK │ (Kiểm tra độ bền)          │
-       └──────────────┴────────────────────────────┘
+```text
+Features/Fishing/
+├── IFishingService.cs
+├── FishingService.cs
+├── FishingBot.cs
+├── FishScanner.cs
+├── FishingModels.cs
+├── FishingPolicies.cs
+├── FishingCatalog.cs
+├── FishingModule.cs
+└── UI/
+    ├── FishingView.cs
+    └── FishingViewModel.cs
 ```
 
----
+`Catalog` và static metadata phải cache. `Scanner` chỉ phát hiện state; `Bot` quyết định state transition; `Service` thực thi action.
 
-## III. BẢNG MÃ HÀM IL2CPP CÂU CÁ (DUMP.CS)
+## 3. GENERIC PIPELINE
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
-| :--- | :--- | :--- | :--- |
-| **Quăng Cần / Giật Cần** | `FishingPoleController.OnClick_Button` | `0x57D233C` | `(thisPtr, int actionType=0)` trên Main Thread |
-| **Trạng Thái Cần** | Field `m_eState` trong `FishingPoleController` | Offset `0x98` | Enum: `0=None, 1=Cast, 2=Wait, 3=Bite, 4=Pull` |
-| **Cờ Cá Cắn (!)** | Field `m_bBite` / `isBite` | Offset `0xA4` | `bool (1 byte)`: Khi chuyển `true`, giật ngay |
-| **Thông Tin Cá** | Pointer `m_CurrentFishData` | Offset `0xB0` | Trỏ tới struct chứa Fish ID, Shadow Size, Rare Level |
-| **Bảo Quản Cá** | `FishingResultDialog.OnClick_Keep` | `0x57E1200` | Click nút giữ cá |
-| **Bán Cá Nhanh** | `FishingResultDialog.OnClick_Sell` | `0x57E1340` | Click nút bán cá ngay |
-| **Sửa Cần** | `ItemRepairDialog.OnClick_Repair` | `0x56F0890` | Sửa chữa khi độ bền về 0 |
-| **Nút OK Nhận Thưởng**| `UIButton.OnClick` | `0x524D90C` | Click trực tiếp UIButton của dialog kết quả |
+```text
+Observe -> Filter -> Score -> Select -> Validate -> Approach -> Action -> Verify -> Collect/Result -> Cooldown -> Observe
+```
+
+Không dùng sleep cứng. Dùng condition/event/timeout.
+
+## 4. DYNAMIC TARGET SELECTION
+
+Mọi filter/priority phải là data-driven:
+
+```text
+TargetRule
+ ├── Enabled
+ ├── Priority
+ ├── RequiredTags
+ ├── ExcludedTags
+ ├── MinValue / MaxValue
+ └── CustomScore
+```
+
+Có thể thay đổi rule từ UI/schema mà không sửa business code.
+
+## 5. SCAN OPTIMIZATION
+
+- Snapshot entity list một lần cho mỗi cycle.
+- Spatial index/quadtree/grid nếu số entity lớn.
+- Reuse entity buffers.
+- Chỉ rescan khi `SceneVersion`, `EntityRevision` hoặc TTL hết hạn.
+- Khi map mới: ưu tiên warm-up scan và cache metadata trước khi bot bắt đầu hành động.
+
+## 6. ACTIONS
+
+Các action chuẩn của module phải map qua `IGameActionDispatcher`; không hardcode RVA trong feature.
+
+| Action | Native binding |
+|---|---|
+| CastRod | Resolve từ `IGameBindingProvider` |
+| ReelIn | Resolve từ binding profile |
+| KeepFish | Resolve từ binding profile |
+| SellFish | Resolve từ binding profile |
+| RepairRod | Resolve từ binding profile |
+
+Mọi binding phải có `GameIdentity`, signature/version và evidence tag.
+
+## 7. STATE MACHINE
+
+Các state phải implement `IState<TContext>` và dùng FSM Core. Không tạo vòng `while(true)` riêng cho feature.
+
+```text
+Idle
+  -> Scanning
+  -> TargetSelected
+  -> Approaching
+  -> Acting
+  -> Verifying
+  -> Collecting/HandlingResult
+  -> Cooldown
+  -> Scanning
+```
+
+Mỗi state có:
+- entry condition;
+- exit condition;
+- timeout;
+- retry policy;
+- cancellation;
+- telemetry.
+
+## 8. FAILURE RECOVERY
+
+Nếu action fail:
+1. Verify target còn tồn tại.
+2. Refresh volatile snapshot.
+3. Retry theo policy giới hạn.
+4. Nếu target stale: bỏ target và rescan.
+5. Nếu platform/game state lỗi: pause module và yêu cầu Core recovery.
+
+Không retry vô hạn.
+
+## 9. UI REQUIREMENTS
+
+View phải tái sử dụng các component chung:
+`FeatureHeader`, `StatusBadge`, `Toggle`, `Slider`, `FilterList`, `TargetPreview`, `StatsCard`, `ActionButton`, `EventLog`.
+
+Không hardcode layout cho từng resolution.
+
+## 10. PERFORMANCE TARGET
+
+Không đặt con số giả nếu chưa benchmark. Dùng baseline đo thực tế:
+- scan p50/p95;
+- action p50/p95;
+- allocations/frame;
+- target selection duration;
+- stale target rate;
+- successful action rate.
+
+## 11. ACCEPTANCE CRITERIA
+
+- Giữ nguyên chức năng DTA_Tool.
+- Có dynamic filter/priority.
+- Không duplicate scanner/cache/dispatcher.
+- Có cache và invalidation.
+- Chuyển platform không sửa module.
+- UI responsive.
+- Regression test cho bug đã biết.

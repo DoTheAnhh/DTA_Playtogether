@@ -1,73 +1,156 @@
-# 12: HỆ THỐNG THIẾT KẾ GIAO DIỆN UI/UX CHUYÊN NGHIỆP TRONG UNITY (ANTI-AI VIBE DESIGN SYSTEM)
+# 12 — DTA_TOOL MODERN UNITY DESIGN SYSTEM
 
-> **Mục tiêu:** Xây dựng hệ thống giao diện trực quan, sang trọng, mang phong cách gaming hiện đại, tối giản (Minimalist Cyberpunk / Industrial Dark Mode), loại bỏ triệt để cảm giác "AI-generated" (tím gradient rẻ tiền, layout nhồi nhét lộn xộn). Cấu trúc phân tách từng menu thành các file component C# độc lập trong Unity.
+## 1. DESIGN GOAL
 
----
+**DTA_Tool là baseline trải nghiệm; Unity là nền tảng nâng cấp.** Mục tiêu là cảm giác quen thuộc nhưng hiện đại hơn, đẹp hơn, mượt hơn và thao tác nhanh hơn.
 
-## I. TRIẾT LÝ THIẾT KẾ: "CYBER GRAPHITE & ARCTIC ICE"
+Không copy từng pixel bằng hardcode. Dùng Design Tokens + reusable components + responsive constraints.
 
-- ✔ **Bảng màu công nghiệp tinh tế:**
-  + **Background (Nền chính):** Charcoal Đậm `#0B0D11`
-  + **Surface (Bề mặt Card):** Dark Slate `#14171F`
-  + **Card Hover & Border:** Graphite Viền Mảnh 1px `#232834`
-  + **Primary Accent (Màu điểm nhấn):** Cold Cyan `#00E5FF`
-  + **Success / Active:** Emerald Green `#10B981` (Bot đang chạy, kết nối ổn định)
-  + **Warning:** Amber Gold `#F59E0B` (Độ bền cần câu/cuốc thấp)
-  + **Danger:** Crimson Red `#EF4444` (Mất kết nối)
-- ✔ **Font chữ & Typography:**
-  + Nhãn văn bản (Labels): `Inter` / `Segoe UI` (13px - 14px, Clean).
-  + Tọa độ, Offset, Tốc độ, Timer: `JetBrains Mono` / `Consolas` (Monospace).
-- ✔ **Khoảng cách & Căn chỉnh (Spacing):** Hệ số chuẩn 4px/8px (Padding 12px, Item Spacing 8px, Border Radius 4px - 6px góc cạnh sắc sảo).
+## 2. DESIGN TOKENS
 
----
-
-## II. CẤU TRÚC PHÂN TÁCH MENU ĐỘC LẬP TRONG C# & UNITY
-
-Mỗi Menu nằm trong một file C# riêng biệt:
-
-```
-src/Client/UI/
-├── Framework/
-│   ├── IMenuView.cs         # Base Interface cho mọi tab
-│   ├── UIRenderer.cs        # Quản lý vòng lặp vẽ và cập nhật UI
-│   └── DesignSystem.cs      # Bảng màu, Style & Token thiết kế
-├── Components/              # Các widget UI dùng chung
-│   ├── CyberCard.cs         # Khung card có viền phát sáng nhẹ
-│   ├── StatusBadge.cs       # Huy hiệu trạng thái Running / Idle
-│   ├── ToggleSwitch.cs      # Công tắc bật tắt gạt mượt
-│   └── StatCounter.cs       # Bộ đếm số lượng quặng/cá đã bắt
-└── Views/                   # Từng Menu là 1 file C# độc lập
-    ├── DashboardView.cs     # Tab Tổng quan & Trạng thái hệ thống
-    ├── FishingView.cs       # Tab Câu cá
-    ├── MiningView.cs        # Tab Đập đá
-    ├── InsectView.cs        # Tab Bắt bọ
-    ├── ExcavationView.cs    # Tab Đào kho báu
-    ├── FarmView.cs          # Tab Nông trại
-    ├── CollectView.cs       # Tab Thu thập vật phẩm
-    ├── TeleportView.cs      # Tab Dịch chuyển & Bản đồ
-    ├── EspView.cs           # Tab ESP & Radar
-    └── SettingsView.cs      # Tab Cài đặt & Bản quyền
+```text
+Theme
+├── ColorTokens
+├── TypographyTokens
+├── SpacingTokens
+├── RadiusTokens
+├── ShadowTokens
+├── MotionTokens
+├── IconTokens
+└── Breakpoints
 ```
 
----
+Mọi view dùng token. Không viết màu/radius/font size rải rác trong code.
 
-## III. BASE INTERFACE `IMenuView`
+## 3. VISUAL LANGUAGE
 
-```csharp
-using System.Threading.Tasks;
+- Dark graphite base.
+- Accent lạnh, tương phản vừa phải.
+- Card bo góc rõ nhưng không quá tròn.
+- Border/subtle elevation.
+- Typography hierarchy mạnh.
+- Icon nhất quán.
+- Khoảng trắng đủ rộng.
+- Không lạm dụng glow/gradient.
 
-namespace DTA.UI.Framework
-{
-    public interface IMenuView
-    {
-        string MenuId { get; }
-        string MenuTitle { get; }
-        int DisplayOrder { get; }
+## 4. LAYOUT
 
-        void Initialize();
-        void Render();
-        void OnStateChanged();
-        void Dispose();
-    }
-}
+```text
+AppShell
+├── TopBar
+│   ├── Brand
+│   ├── ConnectionStatus
+│   └── WindowActions
+├── Sidebar
+│   ├── Dashboard
+│   ├── FeatureMenu (dynamic)
+│   └── Settings
+└── Content
+    ├── Breadcrumb/Header
+    ├── Toolbar
+    └── ViewContent
 ```
+
+Feature menu được render từ registry/schema.
+
+## 5. REUSABLE COMPONENTS
+
+```text
+UI/Components/
+├── AppShell
+├── Sidebar
+├── TopBar
+├── Card
+├── Section
+├── Toggle
+├── Slider
+├── Dropdown
+├── SearchBox
+├── FilterChip
+├── StatusBadge
+├── MetricCard
+├── PrimaryButton
+├── SecondaryButton
+├── IconButton
+├── DataTable
+├── EmptyState
+├── LoadingState
+├── ErrorState
+└── Toast
+```
+
+Một component phải dùng được ở nhiều feature.
+
+## 6. ANIMATION
+
+Motion tokens:
+- hover/press: rất ngắn;
+- panel transition: ngắn;
+- modal: ngắn + easing mềm;
+- list update: subtle;
+- no perpetual animation nếu không cần.
+
+Animation phải bị disable/reduce khi performance mode hoặc accessibility yêu cầu.
+
+## 7. RESPONSIVE
+
+UI phải thích ứng:
+- 16:9;
+- ultrawide;
+- window resize;
+- high DPI;
+- scaling;
+- nhiều resolution emulator.
+
+Không đặt vị trí absolute cho toàn bộ UI.
+
+## 8. DATA BINDING
+
+Dùng ViewModel/state binding:
+```text
+Service -> Observable/Signal -> ViewModel -> View
+```
+
+Chỉ update component dirty. Không rebuild cả menu khi một toggle đổi.
+
+## 9. UX STATES
+
+Mọi màn hình cần:
+- Loading;
+- Ready;
+- Empty;
+- Error;
+- Disabled;
+- Offline/Disconnected;
+- Updating.
+
+## 10. ACCESSIBILITY
+
+- Contrast đủ.
+- Tooltip cho icon-only control.
+- Keyboard focus.
+- Font scaling.
+- Reduced motion.
+
+## 11. UNITY IMPLEMENTATION
+
+Ưu tiên **UI Toolkit** cho cấu trúc UI data-driven và styling; dùng uGUI khi cần tương thích/overlay/runtime đặc thù. Không trộn hai hệ thống tùy tiện trong cùng một component.
+
+## 12. PERFORMANCE
+
+- Pool dynamic rows/cards.
+- Avoid layout rebuilds không cần thiết.
+- Cache references.
+- Không Instantiate/Destroy liên tục.
+- Profile Canvas/UIToolkit update.
+- Asset loading qua Addressables khi quy mô lớn.
+
+## 13. DTA_TOOL PARITY CHECKLIST
+
+Trước khi coi UI mới hoàn thành phải kiểm tra:
+- Menu cũ có đủ không?
+- Workflow cũ có giữ nguyên không?
+- Hotkey/setting có giữ nguyên không?
+- Trạng thái connection có rõ hơn không?
+- Error feedback có tốt hơn không?
+- Có thể thêm menu mới mà không sửa AppShell không?

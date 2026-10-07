@@ -1,123 +1,280 @@
-# 00: BỘ QUY TẮC BẮT BUỘC & TIÊU CHUẨN KIẾN TRÚC C# & UNITY (RULE & ARCHITECTURE)
+# 00 — MASTER RULES & ARCHITECTURE — C# + UNITY
 
-> **Mục tiêu:** Định nghĩa chuẩn mực kỹ thuật bất khả xâm phạm cho toàn bộ dự án C# & Unity DTA PlayTogether. Bất kỳ dòng code nào vi phạm các nguyên tắc dưới đây đều bị coi là lỗi nghiêm trọng (Fatal Architectural Violation).
+> **Mục tiêu:** Đây là luật tối cao cho toàn bộ dự án DTA_Tool. Mọi thay đổi code, UI, protocol, bot, platform adapter và server phải tuân thủ file này. Nếu một yêu cầu mới mâu thuẫn với file này, phải cập nhật rule trước rồi mới code.
 
----
+## 1. MỤC TIÊU KIẾN TRÚC
 
-## I. 17 NGUYÊN TẮC BẮT BUỘC (THE 17 SACRED RULES)
+- Viết **100% C#** cho application/client/server; **không dùng Python hoặc C++** cho logic dự án mới.
+- **Unity** là framework UI/presentation chính để dựng giao diện đẹp, mượt và nhất quán.
+- UI/UX phải lấy **DTA_Tool làm baseline hành vi và bố cục**, sau đó nâng cấp visual, animation, responsive layout, accessibility và tốc độ thao tác; không copy cứng từng màn hình.
+- Core phải **platform-agnostic**: LDPlayer, MEmu và Android APK chỉ là adapter/driver.
+- Code ưu tiên **dynamic/config-driven/data-driven**, tuyệt đối tránh hardcode danh sách, tọa độ, offset, menu, màu, kích thước, timeout hay đường dẫn khi có thể cấu hình.
+- Ưu tiên **extend/composition** thay vì copy-paste. Chức năng dùng chung phải nằm ở Core/Shared.
+- Dữ liệu ít thay đổi phải **cache**; dữ liệu runtime thay đổi phải có TTL/version/invalidation rõ ràng.
+- Không tối ưu bằng cách phá tính đúng đắn. Mọi tối ưu phải đo được bằng profiling/benchmark.
 
-### 1. `dump.cs` Trước Tiên (Evidence First)
-- Chưa tra `F:\DTA_Playtogether\dump.cs` thì **CHƯA ĐƯỢC** viết dòng code nào chạm vào dữ liệu hay hàm của game.
-- Mọi class, struct layout, offset field, method RVA/token phải được kiểm chứng trực tiếp từ `dump.cs`.
+## 2. EVIDENCE FIRST — KHÔNG ĐOÁN API GAME
 
-### 2. Không Đoán (Zero Guesswork)
-- Mọi class, field, method name, enum state value phải có bằng chứng từ `dump.cs` hoặc đo đạc bộ nhớ thực tế.
-- Phân định rõ 3 mức bằng chứng trong code comments:
-  + `// [VERIFIED]`: Đã xác thực trên runtime game thật.
-  + `// [DUMP_ONLY]`: Có trong dump.cs, kèm kiểm tra con trỏ an toàn trước khi gọi.
-  + `// [HYPOTHESIS]`: Giả định — **TUYỆT ĐỐI CẤM** dùng giả định để điều khiển bot.
+Trước khi dùng class/field/method/enum/offset/RVA của game:
+1. Đọc `dump.cs` và các tài liệu runtime có liên quan.
+2. Ghi rõ nguồn bằng một trong ba tag:
+   - `[VERIFIED]`: đã xác minh runtime.
+   - `[DUMP_ONLY]`: có trong dump nhưng chưa xác minh runtime.
+   - `[HYPOTHESIS]`: giả thuyết; **không được dùng để điều khiển hành vi production**.
+3. Không tự bịa offset, signature, enum value hoặc object layout.
+4. Khi game update, invalidate dữ liệu cũ theo `GameVersion + BuildId + Platform`.
 
-### 3. Chỉ Dùng 3 Nguồn Dữ Liệu Hợp Lệ
-- Nguồn 1: **Game Memory** (đọc trực tiếp các cấu trúc thực thể từ RAM).
-- Nguồn 2: **Game State** (các cờ trạng thái đọc từ Controller/Manager của game).
-- Nguồn 3: **Native/Game Functions** (gọi trực tiếp hàm IL2CPP).
-- **CẤM:** Không dùng OpenCV/Screenshot/OCR cho logic tự động hóa lúc runtime.
+## 3. PLATFORM ABSTRACTION — KHÔNG ĐỂ LD/MEMU/APK CHUI VÀO CORE
 
-### 4. Không Hardcode Offset Động & Địa Chỉ Tuyệt Đối
-- Không hardcode con trỏ động, RVA trần không qua module base, toạ độ màn hình hay độ phân giải giả lập.
-- Mọi offset phải được nạp thông qua Config Service hoặc Offset Provider (đồng bộ động từ Server).
+### Supported targets
+- `LDPlayer` / LDPlayer 9+.
+- `MEmu`.
+- Có thể mở rộng `MuMu`, `BlueStacks` hoặc emulator khác.
+- `AndroidApk` native runtime trong tương lai.
+- Mọi target mới phải implement interface thay vì sửa business logic.
 
-### 5. Native Call Phải Đi Qua Core Dispatcher
-- Mọi thao tác gọi hàm IL2CPP bắt buộc phải thông qua `GameActionDispatcher` trên Unity Main Thread.
-- Tách biệt hoàn toàn: UI/Bot ra lệnh -> Service chuyển đổi -> Dispatcher tuần tự hóa -> Thực thi trên Unity Main Thread.
-
-### 6. Không Văng Game (Zero Crash Policy)
-- Validate 100% mọi con trỏ trước khi dereference hoặc invoke:
-  + Con trỏ khác `IntPtr.Zero` và nằm trong dải địa chỉ bộ nhớ hợp lệ của tiến trình.
-  + Địa chỉ phải aligned (4 bytes hoặc 8 bytes tùy kiến trúc 32/64 bit).
-  + Kiểm tra flag `m_CachedPtr != IntPtr.Zero` đối với Unity `UnityEngine.Object`.
-- Mọi hàm gọi native phải được bao bọc trong khối `try / catch` và validation nghiêm ngặt.
-
-### 7. Không Deadlock (Strict Lock Hierarchy)
-- Thứ tự chiếm lock cố định:
-  `UI_State_Lock` -> `Bot_State_Lock` -> `Cache_Lock` -> `Memory_Lock` -> `IPC_Lock`.
-- Mọi thao tác chờ lock phải có timeout (tối đa 2000ms), ưu tiên dùng `ReaderWriterLockSlim` hoặc Lock-Free `Channel<T>` / `ConcurrentQueue<T>` cho dữ liệu tốc độ cao.
-- Không bao giờ giữ lock khi thực hiện I/O mạng hoặc sleep thread.
-
-### 8. Thiết Kế Hướng Interface & Service (Clean Architecture)
-- Lớp `Core` không được phụ thuộc vào lớp `Features`.
-- Các Feature (`Fishing`, `Mining`, `Insect`,...) không được gọi chéo nhau, chỉ giao tiếp thông qua Core Event Bus hoặc Shared Interfaces.
-- Kế thừa chuẩn: Mọi bot kế thừa từ `IBotEngine` hoặc `BaseBot`.
-
-### 9. Nhanh Bằng Thiết Kế & Zero GC Allocation
-- Gom cụm các lượt đọc bộ nhớ (Batch Memory Read): Đọc 1 block 512 bytes thay vì đọc 50 lần mỗi lần 4 bytes.
-- Triệt tiêu hoàn toàn GC Allocation trên Hot-Paths: Sử dụng `Span<T>`, `Memory<T>`, `ArrayPool<T>`, `struct` thay vì `class` cho các gói dữ liệu tạm thời.
-- Cache các đối tượng tĩnh (Scene generation, Local Player instance, Controller pointers) và tự động invalidate khi chuyển scene/map.
-
-### 10. Không Phá Code Đang Hoạt Động (Regression-Free)
-- Khi tối ưu hoặc viết lại một module, hành vi nghiệp vụ cốt lõi phải được giữ nguyên hoặc nâng cấp tốt hơn, không làm mất tính năng đã có.
-
-### 11. Hệ Thống Log Cấu Trúc Hiệu Năng Cao (Async High-Speed Logger)
-- Sử dụng Ring Buffer không khóa (`Channel<LogMessage>`) cho logger C#.
-- Log có tiền tố `[DTA.<Module>]`, kèm timestamp độ chính xác cao (`Stopwatch`), mã lỗi và ngữ cảnh.
-
-### 12. TUYỆT ĐỐI KHÔNG DÙNG NPC / PORTAL / PHONE
-- Cấm đi bộ qua portal, cấm bấm vào NPC chuyển cảnh, cấm mở phone ảo.
-- Cách chuyển bản đồ duy nhất được chấp nhận: Gọi hàm nội bộ chuyển zone của game (`LayerSystem.ConnectToZoneMove`).
-
-### 13. Phòng Thủ Đa Lớp & Chống Reverse Engineering
-- Mã hóa chuỗi compile-time / runtime obfuscation.
-- Anti-Debug, Memory Integrity Checksum, chống can thiệp cheat engine.
-
-### 14. Báo Cáo Trung Thực Về Kiểm Thử
-- Biên dịch thành công không có nghĩa là bot đã hoạt động trong game. Phải ghi rõ trạng thái kiểm thử: `[COMPILED]`, `[DRY_RUN_MOCK]`, `[INGAME_VERIFIED]`.
-
-### 15. Tuân Thủ Cây Thư Mục Chuẩn Tách Biệt
-- Tổ chức thư mục theo tiêu chuẩn C# Clean Architecture: Phân định rõ `Core/`, `Features/`, `UI/`, `Security/`, `Shared/`.
-
-### 16. MỌI HÀNH ĐỘNG = GỌI HÀM NATIVE CỦA GAME (ZERO-TAP SUPREME RULE)
-- Tuyệt đối cấm tap màn hình giả lập (`adb shell input tap`, mouse event, virtual joystick).
-- Mọi động tác: Quăng cần, giật cá, đập quặng, vung vợt, đào xẻng, tưới cây, nhặt đồ, nhảy, đóng dialog... **PHẢI GỌI TRỰC TIẾP HÀM IL2CPP CỦA GAME**.
-
-### 17. Tối Giản, Sạch Sẽ & Không Để Lại Rác
-- Giải phóng 100% tài nguyên khi tắt tool (`IDisposable`).
-- Không để lại file tạm, log rác, scratch code hay background threads chạy ngầm.
-
----
-
-## II. KIẾN TRÚC MÃ NGUỒN C# & UNITY (CLEAN ARCHITECTURE)
-
-### 1. Kiến Trúc 4 Tầng Phân Lớp
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                       PRESENTATION LAYER                    │
-│   Unity uGUI / UI Toolkit / IMGUI (Server-Driven UI)        │
-│   Từng Menu là 1 IMenuView độc lập (FishingView, MiningView)│
-└──────────────────────────────┬──────────────────────────────┘
-                               │ (Dependency Inversion)
-┌──────────────────────────────▼──────────────────────────────┐
-│                       APPLICATION LAYER                     │
-│   Services: IFishingService, IMiningService, ITeleportService│
-│   Bots: FishingBot, MiningBot (Finite State Machine)        │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────┐
-│                         DOMAIN LAYER                        │
-│   Models: FishEntity, OreEntity, Waypoint, PlayerState      │
-│   Interfaces: IDeviceDriver, IMemoryService, INativeBridge  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────┐
-│                     INFRASTRUCTURE LAYER                    │
-│   Memory: FastMemoryReader (Win32 RPM / Direct Ptr), Cache  │
-│   Native: GameActionDispatcher (Unity Main Thread Queue)    │
-│   Device: LDPlayer9Driver, MEmuDriver, AndroidNativeBridge  │
-└─────────────────────────────────────────────────────────────┘
+```text
+Core
+ └── IPlatformRuntime
+      ├── LDPlayerRuntimeAdapter
+      ├── MEmuRuntimeAdapter
+      ├── AndroidApkRuntimeAdapter
+      └── FutureRuntimeAdapter
 ```
 
-### 2. Tiêu Chuẩn Viết Code C# Trong Dự Án
-- **Tên Interface:** Bắt đầu bằng chữ `I` (`IFishingService`, `IMemoryService`).
-- **Asynchronous Hot-Paths:** Dùng `ValueTask` hoặc `UniTask` cho các tác vụ bất đồng bộ không cấp phát GC.
-- **Unmanaged Memory:** Sử dụng `Span<byte>` và `fixed` khi đọc ghi struct nhị phân từ game memory.
-- **Null Safety:** Bật `Nullable Reference Types` (`<Nullable>enable</Nullable>`).
+Core chỉ biết capability (`Attach`, `ReadState`, `Invoke`, `GetScreenMetrics`, `GetGameIdentity`...), không biết process name, ADB port hay đường dẫn cài đặt cụ thể.
+
+## 4. ZERO HARD-CODE
+
+Cấm hardcode:
+- Dynamic address/pointer/RVA.
+- Emulator executable path/ADB port.
+- Resolution và DPI.
+- Menu item list.
+- Feature settings.
+- Server endpoint trong business code.
+- Theme values trong từng view.
+- Magic number không có tên/config.
+
+Cho phép constant chỉ khi là **immutable domain invariant** và phải đặt tên rõ ràng.
+
+## 5. CACHE-FIRST
+
+Phân loại dữ liệu:
+
+| Loại | Cách xử lý |
+|---|---|
+| Static catalog / enum metadata | Memory cache + versioned snapshot |
+| Game signature / offset | Versioned cache + validation |
+| UI schema/theme | Local persistent cache + ETag/version |
+| Map metadata | Map cache + invalidation khi build/map đổi |
+| Runtime entity | Short TTL/frame cache |
+| Player position/state | Runtime snapshot, không persistent |
+| License/session | Secure cache + expiry |
+
+Cache bắt buộc có:
+- key chuẩn;
+- TTL hoặc version;
+- invalidation event;
+- fallback khi cache lỗi;
+- giới hạn kích thước;
+- metric hit/miss.
+
+## 6. EXTENSION-FIRST
+
+Không viết:
+```csharp
+if (feature == "Fishing") { ... }
+else if (feature == "Mining") { ... }
+else if (feature == "Insect") { ... }
+```
+cho logic có khả năng mở rộng.
+
+Thay bằng:
+```csharp
+IFeatureModule module = registry.Resolve(featureId);
+await module.ExecuteAsync(context);
+```
+
+Dùng:
+- interfaces;
+- strategy pattern;
+- registry;
+- factory;
+- composition;
+- event bus;
+- generic base service;
+- capability interfaces.
+
+## 7. GAME ACTION DISPATCH
+
+Mọi call vào Unity/Game/IL2CPP phải đi qua một abstraction trung tâm như `IGameActionDispatcher`. Không gọi native/game API trực tiếp từ View.
+
+```text
+UI -> Application Command -> Feature Service -> GameActionDispatcher -> Platform/Game Bridge
+```
+
+Nếu action yêu cầu Unity main thread, dispatcher phải bảo đảm main-thread affinity.
+
+## 8. MEMORY & PERFORMANCE
+
+- Batch read thay vì nhiều read nhỏ.
+- Reuse buffer bằng `ArrayPool<T>` khi phù hợp.
+- Tránh LINQ/string allocation trong hot path.
+- Dùng `readonly struct` cho snapshot nhỏ.
+- Không tạo Task/closure mỗi frame nếu không cần.
+- Có backpressure cho producer/consumer.
+- Không giữ lock khi I/O.
+- Ưu tiên immutable snapshots + atomic swap cho read-heavy state.
+- Mọi claim performance phải có benchmark.
+
+## 9. CONCURRENCY
+
+Thứ tự lock thống nhất nếu thật sự cần lock:
+`UI -> Bot -> Cache -> Memory -> IPC`.
+
+Không giữ lock trong:
+- network I/O;
+- disk I/O;
+- Unity frame yield;
+- external process call.
+
+Ưu tiên lock-free/immutable snapshot/channel.
+
+## 10. UI/UX — DTA_TOOL BASELINE, UNITY UPGRADE
+
+UI phải:
+- giữ workflow quen thuộc của DTA_Tool;
+- có navigation rõ ràng;
+- bo góc hợp lý;
+- hierarchy thị giác tốt;
+- animation ngắn, mượt, không gây chậm thao tác;
+- responsive theo resolution/DPI/aspect ratio;
+- dark/light theme nếu schema hỗ trợ;
+- keyboard/gamepad-friendly khi cần;
+- trạng thái loading/empty/error/disabled đầy đủ.
+
+Không dùng animation chỉ để “cho đẹp”; animation phải phục vụ feedback.
+
+## 11. UI DATA-DRIVEN
+
+Menu, field, toggle, slider, dropdown, card, badge, hotkey, tooltip và permission phải có model/schema.
+
+```text
+FeatureDefinition
+ ├── Id
+ ├── DisplayName
+ ├── Icon
+ ├── Order
+ ├── Availability
+ ├── SettingsSchema
+ └── CapabilityRequirements
+```
+
+View render schema; không copy-paste view cho từng feature nếu layout có thể tái sử dụng.
+
+## 12. SERVER/CLIENT
+
+Server quản lý:
+- authentication/license;
+- configuration/version;
+- feature flags;
+- UI schema;
+- static catalogs;
+- offset/signature metadata;
+- telemetry tối thiểu cần thiết.
+
+Client xử lý runtime hot path. Không gửi raw memory/state tick liên tục lên server.
+
+Mọi server mutation quan trọng phải có audit/version.
+
+## 13. SECURITY & PRIVACY
+
+- Secrets không hardcode trong client.
+- Không log token, key, HWID hoặc dữ liệu nhạy cảm.
+- TLS bắt buộc cho production.
+- Validate server response trước khi apply.
+- Security feature không được phá ổn định client.
+- Anti-tamper/anti-debug chỉ triển khai trong phạm vi hợp pháp của ứng dụng và phải có kill-switch cấu hình.
+
+## 14. ERROR HANDLING
+
+Không dùng exception làm control flow trong hot path.
+
+Mỗi lỗi phải có:
+- error code;
+- module;
+- operation;
+- recoverability;
+- retry policy;
+- context id.
+
+## 15. OBSERVABILITY
+
+Log structured:
+`timestamp / level / module / operation / result / duration / platform / gameVersion / contextId`.
+
+Có metrics:
+- cache hit rate;
+- scan duration;
+- action latency;
+- queue depth;
+- frame time;
+- GC allocation;
+- network RTT;
+- platform attach time.
+
+## 16. TESTING & REGRESSION
+
+Mỗi feature phải có:
+- unit test cho pure logic;
+- mock integration test cho adapter;
+- regression case;
+- runtime verification nếu cần.
+
+Trạng thái test:
+`[COMPILED]`, `[UNIT_TESTED]`, `[MOCK_VERIFIED]`, `[INGAME_VERIFIED]`.
+
+Không được gọi một tính năng “đã fix” chỉ vì build thành công.
+
+## 17. CẤU TRÚC FOLDER CHUẨN
+
+```text
+DTA_Tool/
+├── docs/
+├── skill/
+├── dump/
+├── src/
+│   ├── Client.Unity/
+│   │   ├── Assets/
+│   │   │   ├── Scripts/
+│   │   │   │   ├── Core/
+│   │   │   │   ├── Application/
+│   │   │   │   ├── Domain/
+│   │   │   │   ├── Infrastructure/
+│   │   │   │   ├── Platform/
+│   │   │   │   ├── Features/
+│   │   │   │   ├── UI/
+│   │   │   │   └── Shared/
+│   │   │   ├── UI/
+│   │   │   ├── Addressables/
+│   │   │   └── Settings/
+│   │   └── Packages/
+│   ├── Server/
+│   ├── Shared/
+│   └── Tools/
+└── tests/
+```
+
+## 18. DEFINITION OF DONE
+
+Một task chỉ hoàn thành khi:
+1. Không vi phạm rule.
+2. Không duplicate logic có thể tái sử dụng.
+3. Có cache/invalidation nếu dữ liệu phù hợp.
+4. Có platform abstraction.
+5. UI responsive và có đủ state.
+6. Không regression chức năng cũ.
+7. Build/test thành công.
+8. Tài liệu skill được cập nhật nếu kiến trúc thay đổi.
+9. Nếu server thay đổi: **push server lên Git sau khi task hoàn tất**.
