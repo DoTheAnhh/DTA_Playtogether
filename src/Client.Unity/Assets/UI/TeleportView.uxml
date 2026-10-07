@@ -1,0 +1,40 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:Style src="Styles/DTA_ModernTheme.uss" />
+    <ui:ScrollView style="flex-grow: 1;">
+        <!-- Header Card -->
+        <ui:VisualElement class="card">
+            <ui:Label text="📍 Quản lý Dịch chuyển & Góc nhìn Nhân vật" class="card-title" />
+            <ui:Label text="Dịch chuyển tức thời tới toạ độ, tự động căn chỉnh hướng quay nhân vật và góc nhìn camera POV" style="color: #94a3b8; font-size: 13px;" />
+            <ui:VisualElement style="flex-direction: row; margin-top: 12px; align-items: center;">
+                <ui:TextField name="input_search" placeholder-text="Tìm kiếm vị trí..." style="flex-grow: 1; margin-right: 12px;" />
+                <ui:Button name="btn_add_current" text="+ Lưu vị trí hiện tại" class="btn-secondary" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Waypoints List Card -->
+        <ui:VisualElement class="card">
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <ui:Label text="Danh sách điểm dịch chuyển" class="card-title" style="margin-bottom: 0;" />
+                <ui:VisualElement style="flex-direction: row;">
+                    <ui:Button name="filter_all" text="Tất cả" class="btn-secondary" style="height: 28px; margin-right: 4px;" />
+                    <ui:Button name="filter_server" text="Server" class="btn-secondary" style="height: 28px; margin-right: 4px;" />
+                    <ui:Button name="filter_local" text="Cá nhân" class="btn-secondary" style="height: 28px;" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Table Header -->
+            <ui:VisualElement style="flex-direction: row; padding: 8px; background-color: #0f172a; border-radius: 6px; margin-bottom: 4px;">
+                <ui:Label text="Tên điểm" style="width: 180px; color: #64748b; -unity-font-style: bold; font-size: 12px;" />
+                <ui:Label text="Bản đồ" style="width: 120px; color: #64748b; -unity-font-style: bold; font-size: 12px;" />
+                <ui:Label text="Toạ độ (X, Y, Z)" style="width: 180px; color: #64748b; -unity-font-style: bold; font-size: 12px;" />
+                <ui:Label text="Góc nhìn (Yaw / Pitch)" style="flex-grow: 1; color: #64748b; -unity-font-style: bold; font-size: 12px;" />
+                <ui:Label text="Thao tác" style="width: 100px; color: #64748b; -unity-font-style: bold; font-size: 12px; -unity-text-align: middle-right;" />
+            </ui:VisualElement>
+
+            <!-- Waypoint Rows Container -->
+            <ui:VisualElement name="waypoints_container">
+                <!-- Dynamically populated from WaypointRegistry -->
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:ScrollView>
+</ui:UXML>

@@ -1,0 +1,30 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:Style src="Styles/DTA_ModernTheme.uss" />
+    <ui:ScrollView style="flex-grow: 1;">
+        <!-- License Card -->
+        <ui:VisualElement class="card">
+            <ui:Label text="🛡️ Bản quyền & Thiết bị (License & Device)" class="card-title" />
+            <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 8px;">
+                <ui:Label text="Trạng thái VIP:" style="color: #94a3b8; width: 120px;" />
+                <ui:Label text="HOẠT ĐỘNG (VIP vĩnh viễn)" class="status-badge" />
+            </ui:VisualElement>
+            <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 8px;">
+                <ui:Label text="Mã thiết bị (HWID):" style="color: #94a3b8; width: 120px;" />
+                <ui:Label text="DTA-HWID-9A82-FC31-884B" style="color: #f8fafc; -unity-font-style: bold;" />
+            </ui:VisualElement>
+            <ui:VisualElement style="flex-direction: row; align-items: center;">
+                <ui:Label text="Server kết nối:" style="color: #94a3b8; width: 120px;" />
+                <ui:Label text="http://localhost:5000" style="color: #38bdf8;" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Risk Guard Card -->
+        <ui:VisualElement class="card">
+            <ui:Label text="⚠️ Kiểm soát Rủi ro & An toàn (Risk Guard)" class="card-title" />
+            <ui:Label text="Các tính năng can thiệp trực tiếp vào bộ nhớ game chỉ được phép chạy khi bạn xác nhận rủi ro" style="color: #94a3b8; font-size: 13px; margin-bottom: 12px;" />
+            <ui:Toggle label="Xác nhận sử dụng Dịch chuyển tức thời (Teleport Guard)" value="true" style="margin-bottom: 8px;" />
+            <ui:Toggle label="Xác nhận sử dụng Ghi bộ nhớ nhanh (Memory Patch Guard)" value="true" style="margin-bottom: 8px;" />
+            <ui:Toggle label="Bật cơ chế chống độn thổ & rơi tự do (Anti-fall Protection)" value="true" style="margin-bottom: 8px;" />
+        </ui:VisualElement>
+    </ui:ScrollView>
+</ui:UXML>

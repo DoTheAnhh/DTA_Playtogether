@@ -1,0 +1,43 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:Style src="Styles/DTA_ModernTheme.uss" />
+    <ui:ScrollView style="flex-grow: 1;">
+        <!-- Status Card -->
+        <ui:VisualElement class="card">
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <ui:Label text="⛏️ Tự động Đập đá & Khai khoáng (Mining Bot)" class="card-title" style="margin-bottom: 0;" />
+                <ui:Label text="TRẠNG THÁI: SẴN SÀNG" class="status-badge" />
+            </ui:VisualElement>
+            <ui:Label text="Tìm mạch quặng gần nhất, tiếp cận và gọi OnClickPickax() qua game function" style="color: #94a3b8; font-size: 13px; margin-top: 4px;" />
+            
+            <ui:VisualElement style="flex-direction: row; margin-top: 16px;">
+                <ui:Button name="btn_start_mining" text="▶ BẮT ĐẦU ĐẬP ĐÁ" class="btn-primary" style="margin-right: 12px; height: 42px;" />
+                <ui:Button name="btn_stop_mining" text="⏹ DỪNG LẠI" class="btn-secondary" style="height: 42px;" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Options Card -->
+        <ui:VisualElement class="card">
+            <ui:Label text="Cấu hình Khai thác" class="card-title" />
+            
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <ui:Label text="Loại mạch đá mục tiêu:" style="color: #f8fafc;" />
+                <ui:VisualElement style="flex-direction: row;">
+                    <ui:Button text="Tất cả" class="btn-primary" style="margin-right: 4px;" />
+                    <ui:Button text="Đá & quặng thường" class="btn-secondary" style="margin-right: 4px;" />
+                    <ui:Button text="Quặng sự kiện" class="btn-secondary" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <ui:Label text="Phương thức di chuyển:" style="color: #f8fafc;" />
+                <ui:VisualElement style="flex-direction: row;">
+                    <ui:Button text="Đi bộ (NavMesh)" class="btn-primary" style="margin-right: 4px;" />
+                    <ui:Button text="Dịch chuyển (Anti-fall)" class="btn-secondary" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:Toggle label="Tự sửa cuốc khi hết độ bền" value="true" style="margin-bottom: 8px;" />
+            <ui:Slider label="Bán kính quét quặng (m):" value="50" low-value="10" high-value="150" />
+        </ui:VisualElement>
+    </ui:ScrollView>
+</ui:UXML>

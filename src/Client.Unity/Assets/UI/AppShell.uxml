@@ -1,0 +1,37 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:Style src="Styles/DTA_ModernTheme.uss" />
+    <ui:VisualElement class="app-container" style="flex-direction: column;">
+        <!-- TopBar -->
+        <ui:VisualElement class="top-bar">
+            <ui:VisualElement style="flex-direction: row; align-items: center;">
+                <ui:Label text="DTA PLAY TOGETHER" class="brand-title" />
+                <ui:Label text="v2.0 (C# + Unity)" style="color: #64748b; margin-left: 8px; font-size: 12px;" />
+            </ui:VisualElement>
+            <ui:VisualElement style="flex-direction: row; align-items: center;">
+                <ui:Label text="Thiết bị: LDPlayer #0 (127.0.0.1:5554)" style="color: #94a3b8; margin-right: 16px; font-size: 13px;" />
+                <ui:Label text="ONLINE" class="status-badge" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Body: Sidebar + Content -->
+        <ui:VisualElement style="flex-direction: row; flex-grow: 1;">
+            <!-- Sidebar -->
+            <ui:VisualElement class="sidebar">
+                <ui:Button name="btn_nav_teleport" text="📍 Dịch chuyển" class="nav-button nav-button-active" />
+                <ui:Button name="btn_nav_fishing" text="🎣 Câu cá" class="nav-button" />
+                <ui:Button name="btn_nav_mining" text="⛏️ Đập đá" class="nav-button" />
+                <ui:Button name="btn_nav_insect" text="🦋 Bắt bọ" class="nav-button" />
+                <ui:Button name="btn_nav_excavation" text="🏺 Đào cổ vật" class="nav-button" />
+                <ui:Button name="btn_nav_farm" text="🌱 Nông trại" class="nav-button" />
+                <ui:Button name="btn_nav_collect" text="📦 Thu thập" class="nav-button" />
+                <ui:Button name="btn_nav_esp" text="👁️ ESP Radar" class="nav-button" />
+                <ui:Button name="btn_nav_settings" text="⚙️ Cài đặt" class="nav-button" />
+            </ui:VisualElement>
+
+            <!-- Main Content Container -->
+            <ui:VisualElement name="content_container" class="content-area">
+                <!-- Dynamically loaded feature screens appear here -->
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

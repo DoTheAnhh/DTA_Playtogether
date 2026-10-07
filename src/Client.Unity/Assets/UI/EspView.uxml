@@ -1,0 +1,44 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:Style src="Styles/DTA_ModernTheme.uss" />
+    <ui:ScrollView style="flex-grow: 1;">
+        <!-- Status Card -->
+        <ui:VisualElement class="card">
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <ui:Label text="👁️ ESP & Radar (Visual Overlay)" class="card-title" style="margin-bottom: 0;" />
+                <ui:Label text="TRẠNG THÁI: HOẠT ĐỘNG" class="status-badge" />
+            </ui:VisualElement>
+            <ui:Label text="Hiển thị khoảng cách, vị trí 3D và khung bao thực thể trên màn hình" style="color: #94a3b8; font-size: 13px; margin-top: 4px;" />
+            <ui:Toggle label="BẬT TẤT CẢ ESP" value="true" style="margin-top: 12px; -unity-font-style: bold;" />
+        </ui:VisualElement>
+
+        <!-- Categories Card -->
+        <ui:VisualElement class="card">
+            <ui:Label text="Danh mục hiển thị ESP" class="card-title" />
+            
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <ui:Toggle label="🐟 Cá (Fish Overlay - Xanh dương)" value="true" />
+                <ui:Label text="Khoảng cách: 150m" style="color: #94a3b8; font-size: 12px;" />
+            </ui:VisualElement>
+
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <ui:Toggle label="🦋 Côn trùng (Bug Overlay - Xanh lá)" value="true" />
+                <ui:Label text="Khoảng cách: 100m" style="color: #94a3b8; font-size: 12px;" />
+            </ui:VisualElement>
+
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <ui:Toggle label="⛏️ Mạch quặng (Ore Overlay - Vàng)" value="true" />
+                <ui:Label text="Khoảng cách: 120m" style="color: #94a3b8; font-size: 12px;" />
+            </ui:VisualElement>
+
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <ui:Toggle label="🏺 Cổ vật (Relic Overlay - Tím)" value="true" />
+                <ui:Label text="Khoảng cách: 120m" style="color: #94a3b8; font-size: 12px;" />
+            </ui:VisualElement>
+
+            <ui:VisualElement style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <ui:Toggle label="👤 Người chơi khác (Player Radar - Đỏ)" value="false" />
+                <ui:Label text="Khoảng cách: 80m" style="color: #94a3b8; font-size: 12px;" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:ScrollView>
+</ui:UXML>
