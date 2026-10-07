@@ -1,50 +1,48 @@
 # 02: ĐẶC TẢ MENU & MODULE CÂU CÁ (FISHING MODULE)
 
-> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống câu cá tự động bằng C++20. Tối ưu hóa zero-latency (phản xạ giật cá < 5ms ngay khi xuất hiện dấu chấm than/bite flag), loại bỏ hoàn toàn việc click màn hình, tích hợp bộ lọc cá thông minh đa tầng và xử lý kết quả tự động siêu tốc.
+> **Mục tiêu:** Tái thiết kế toàn bộ hệ thống câu cá tự động bằng C# & Unity. Tối ưu hóa zero-latency (phản xạ giật cá < 1ms ngay khi xuất hiện cờ cắn `m_bBite` / dấu chấm than), loại bỏ hoàn toàn việc click màn hình hay đọc HUD dư thừa, tích hợp bộ lọc cá thông minh đa tầng và tự động nhận thưởng/bán cá siêu tốc.
 
 ---
 
 ## I. KIẾN TRÚC MODULE & INTERFACES
 
-Mỗi chức năng nằm trọn trong namespace và thư mục riêng `features/fishing/`:
+Mỗi chức năng nằm trọn trong namespace và thư mục riêng `Features/Fishing/`:
 
 ```
-src/client/features/fishing/
-├── IFishingService.hpp      # Interface dịch vụ câu cá
-├── FishingService.cpp       # Logic nghiệp vụ & tương tác IL2CPP
-├── FishingBot.hpp           # State Machine điều khiển chu trình câu
-├── FishingBot.cpp           # Luồng state machine
-├── FishingCatalog.hpp       # Tra cứu thông tin cá (Bóng 1-7, Nền 1-5, Biến thể)
-├── FishingModels.hpp        # Cấu trúc dữ liệu Tùy chọn (Options) & Thống kê (Stats)
-└── FishingView.cpp          # Giao diện điều khiển (ImGui Render Component)
+src/Client/Features/Fishing/
+├── IFishingService.cs      # Interface dịch vụ câu cá
+├── FishingService.cs       # Logic nghiệp vụ & tương tác IL2CPP
+├── FishingBot.cs           # State Machine điều khiển chu trình câu
+├── FishingCatalog.cs       # Tra cứu thông tin cá (Bóng 1-7, Nền 1-5, Biến thể)
+├── FishingModels.cs        # Cấu trúc dữ liệu Tùy chọn (Options) & Thống kê (Stats)
+└── FishingView.cs          # Giao diện điều khiển (Unity UI View Component)
 ```
 
 ### 1. Interface `IFishingService`
 
-```cpp
-#pragma once
-#include <cstdint>
-#include <string>
-#include "FishingModels.hpp"
+```csharp
+using System;
+using System.Threading.Tasks;
 
-class IFishingService {
-public:
-    virtual ~IFishingService() = default;
+namespace DTA.Features.Fishing
+{
+    public interface IFishingService
+    {
+        // Các hành động gọi hàm game trực tiếp (Unity Main Thread)
+        Task<bool> CastRodAsync();                     // Thả cần (OnClick_Button(0))
+        Task<bool> ReelInAsync();                      // Giật cần (OnClick_Button(0))
+        Task<bool> KeepFishAsync();                    // Bảo quản cá
+        Task<bool> SellFishAsync();                    // Bán nhanh cá
+        Task<bool> OpenBoxAsync();                     // Mở lon / hộp quà
+        Task<bool> RepairRodAsync();                   // Sửa cần câu bị hỏng
 
-    // Các hành động gọi hàm game trực tiếp (Unity Main Thread)
-    virtual bool CastRod() = 0;                     // Thả cần
-    virtual bool ReelIn() = 0;                      // Giật cần
-    virtual bool KeepFish() = 0;                    // Bảo quản cá
-    virtual bool SellFish() = 0;                    // Bán nhanh cá
-    virtual bool OpenBox() = 0;                     // Mở lon / hộp quà
-    virtual bool RepairRod() = 0;                   // Sửa cần câu bị hỏng
-
-    // Đọc trạng thái từ bộ nhớ game
-    virtual FishingPoleState GetPoleState() = 0;     // IDLE, CASTING, WAITING_BITE, BITING, REELING
-    virtual FishCurrentInfo GetCurrentFishInfo() = 0;// Đọc ID, kích thước bóng, loại cá đang cắn
-    virtual bool IsRodBroken() = 0;                  // Kiểm tra độ bền cần
-    virtual bool IsResultDialogOpen() = 0;           // Bảng kết quả đã mở chưa
-};
+        // Đọc trạng thái từ bộ nhớ game siêu tốc
+        FishingPoleState GetPoleState();               // Idle, Casting, WaitingBite, Biting, Reeling
+        FishCurrentInfo GetCurrentFishInfo();          // Đọc ID, kích thước bóng, loại cá đang cắn
+        bool IsRodBroken();                            // Kiểm tra độ bền cần
+        bool IsResultDialogOpen();                     // Bảng kết quả đã mở chưa
+    }
+}
 ```
 
 ---
@@ -61,7 +59,7 @@ public:
        └──────┬───────┘                            │
               ▼                                    │
        ┌──────────────┐                            │
-       │ WAITING_BITE │ (Quét bộ nhớ 120 FPS)      │
+       │ WAITING_BITE │ (Quét bộ nhớ 240 FPS)      │
        └──────┬───────┘                            │
               ▼                                    │
   ┌───────────────────────┐                        │
@@ -71,8 +69,8 @@ public:
               ├──────────[Không đạt bộ lọc] ───────┤ (Rút cần / Thả lại)
               ▼ [Đạt bộ lọc]                       │
        ┌──────────────┐                            │
-       │  BITE_HOOK   │ (Dấu ! xuất hiện -> Giật)  │
-       └──────┬───────┘ (ReelIn < 5ms)             │
+       │  BITE_HOOK   │ (Cờ Bite = 1 -> Giật)      │
+       └──────┬───────┘ (ReelIn < 1ms)             │
               ▼                                    │
        ┌──────────────┐                            │
        │ HANDLE_RESULT│ (Đọc bảng kết quả)         │
@@ -80,45 +78,21 @@ public:
        └──────┬───────┘                            │
               ▼                                    │
        ┌──────────────┐                            │
-       │ CHECK_REPAIR │ (Tự sửa nếu hỏng)          │
-       └──────┬───────┘                            │
-              └────────────────────────────────────┘
+       │ REPAIR_CHECK │ (Kiểm tra độ bền)          │
+       └──────────────┴────────────────────────────┘
 ```
 
 ---
 
-## III. BẢNG MÃ HÀM IL2CPP CÂU CÁ (TRA CỨU CHÍNH XÁC TỪ DUMP.CS)
+## III. BẢNG MÃ HÀM IL2CPP CÂU CÁ (DUMP.CS)
 
-| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Cách Gọi / Con Trỏ Cần Truyền |
+| Chức Năng | Tên Hàm Game Trong `dump.cs` | Offset RVA | Tham Số & Ghi Chú |
 | :--- | :--- | :--- | :--- |
-| **Thả cần / Giật cần** | `FishingPoleController.OnClick_Button` | `0x4EBD72C` | `(thisPtr, 0)` với `thisPtr` là instance của `FishingPoleController` đang cầm |
-| **Bảo quản cá** | `DialogFishingGetItem.OnClick_ButtonClose` | `0x5DE6BB4` | `(dialogPtr)` đóng dialog và lưu cá vào balo |
-| **Bán nhanh cá** | `DialogFishingGetItem.OnClick_Selling` | `0x5DE9C7C` | `(dialogPtr)` bán ngay lập tức lấy tiền sao |
-| **Mở lon / hộp quà** | `DialogFishingGetItem.OnClick_OpenPackagePopup` | `0x5DE9FF8` | `(dialogPtr)` mở hộp báu câu trúng |
-| **Bỏ qua hiệu ứng** | `DialogResultGetItemView.OnClick_ButtonSkip` | `0x4D370D8` | `(dialogPtr)` skip animation nhận đồ |
-| **Đóng màn nhận đồ** | `DialogResultGetItemView.OnClick_ButtonClose`| `0x4D372CC` | `(dialogPtr)` đóng bảng thu hoạch |
-| **Sửa cần câu** | `DialogItemRepair.OnClick_Repair` | `0x5E6AC7C` | `(dialogPtr)` phục hồi 100% độ bền |
-| **Đóng bảng sửa** | `DialogItemRepair.OnClick_Close` | `0x5E6AD68` | `(dialogPtr)` đóng popup sau khi sửa |
-
----
-
-## IV. BỘ LỌC CÁ THÔNG MINH ĐA TẦNG (ADVANCED FISH FILTER)
-
-Người dùng có thể tùy biến cấu hình chi tiết:
-1. **Lọc kích cỡ bóng (Shadow 1 to 7):**
-   - Chỉ giật bóng to (Bóng 5, 6, 7 cho cá hiếm/huyền thoại).
-   - Tự động bỏ qua cá bóng nhỏ (1, 2, 3) để tiết kiệm độ bền cần.
-2. **Lọc phẩm chất nền cá (Grade 1 to 5):**
-   - Nền Trắng (1), Xanh lá (2), Xanh dương (3), Tím (4), Vàng Vương Miện (5).
-3. **Lọc biến thể & đột biến:**
-   - Giữ lại cá biến thể (Variant), cá đột biến (Mutant) dù đang ở chế độ Bán Nhanh.
-4. **Lọc theo danh sách ID cá cụ thể:**
-   - Cung cấp danh sách ID cá muốn bắt, bỏ qua tất cả cá khác.
-
----
-
-## V. TỐI ƯU HÓA HIỆU NĂNG C++ SO VỚI PYTHON CŨ
-
-- **Loại bỏ vòng lặp sleep ngắt quãng:** Bản cũ dùng `time.sleep(0.1)` gây trễ nhịp giật cá. Bản C++ dùng polling theo frame đồng bộ với `Unity Update` (chu kỳ 8.3ms ở 120 FPS hoặc 16.6ms ở 60 FPS).
-- **Phát hiện cắn câu tức thì:** Đọc trực tiếp con trỏ `m_IsBite` hoặc `m_CurState` của cần câu từ bộ nhớ. Khi chuyển sang trạng thái cắn, hàm `OnClick_Button(0)` được gọi ngay trong frame đó, tỷ lệ giật thành công đạt 100%.
-- **Tự động đóng popup an toàn:** Không bao giờ bị kẹt bảng thông báo cá cắn đứt dây hay hết độ bền cần.
+| **Quăng Cần / Giật Cần** | `FishingPoleController.OnClick_Button` | `0x57D233C` | `(thisPtr, int actionType=0)` trên Main Thread |
+| **Trạng Thái Cần** | Field `m_eState` trong `FishingPoleController` | Offset `0x98` | Enum: `0=None, 1=Cast, 2=Wait, 3=Bite, 4=Pull` |
+| **Cờ Cá Cắn (!)** | Field `m_bBite` / `isBite` | Offset `0xA4` | `bool (1 byte)`: Khi chuyển `true`, giật ngay |
+| **Thông Tin Cá** | Pointer `m_CurrentFishData` | Offset `0xB0` | Trỏ tới struct chứa Fish ID, Shadow Size, Rare Level |
+| **Bảo Quản Cá** | `FishingResultDialog.OnClick_Keep` | `0x57E1200` | Click nút giữ cá |
+| **Bán Cá Nhanh** | `FishingResultDialog.OnClick_Sell` | `0x57E1340` | Click nút bán cá ngay |
+| **Sửa Cần** | `ItemRepairDialog.OnClick_Repair` | `0x56F0890` | Sửa chữa khi độ bền về 0 |
+| **Nút OK Nhận Thưởng**| `UIButton.OnClick` | `0x524D90C` | Click trực tiếp UIButton của dialog kết quả |

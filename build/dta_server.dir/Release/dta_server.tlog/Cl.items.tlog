@@ -1,8 +1,0 @@
-F:\DTA_Playtogether\src\server\ServerMain.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\ServerMain.obj
-F:\DTA_Playtogether\src\server\api\AuthHandler.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\AuthHandler.obj
-F:\DTA_Playtogether\src\server\database\DatabaseManager.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\DatabaseManager.obj
-F:\DTA_Playtogether\src\server\network\HttpServer.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\HttpServer.obj
-F:\DTA_Playtogether\src\server\security\TokenBucketLimiter.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\TokenBucketLimiter.obj
-F:\DTA_Playtogether\src\server\services\MasterTeleportService.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\MasterTeleportService.obj
-F:\DTA_Playtogether\src\server\ui\ServerPanelWindow.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\ServerPanelWindow.obj
-F:\DTA_Playtogether\src\server\ui_schema\UISchemaManager.cpp;F:\DTA_Playtogether\build\DTA_Server.dir\Release\UISchemaManager.obj
