@@ -183,7 +183,7 @@ void ServerPanelWindow::InitControls(HWND hWnd) {
         36, 605, 85, 24, hWnd, nullptr, m_hInstance, nullptr);
     SendMessage(m_hLblNewKey, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
 
-    m_hEditNewKey = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"DTA-VIP-2026-KEY",
+    m_hEditNewKey = CreateWindowExW(0, L"EDIT", L"DTA-VIP-2026-KEY",
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
         125, 601, 220, 28, hWnd, reinterpret_cast<HMENU>(IDC_EDIT_KEY_NAME), m_hInstance, nullptr);
     SendMessage(m_hEditNewKey, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
@@ -192,7 +192,7 @@ void ServerPanelWindow::InitControls(HWND hWnd) {
         360, 605, 65, 24, hWnd, nullptr, m_hInstance, nullptr);
     SendMessage(m_hLblDays, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
 
-    m_hEditDays = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"365",
+    m_hEditDays = CreateWindowExW(0, L"EDIT", L"365",
         WS_CHILD | WS_VISIBLE | ES_NUMBER,
         430, 601, 60, 28, hWnd, reinterpret_cast<HMENU>(IDC_EDIT_KEY_DAYS), m_hInstance, nullptr);
     SendMessage(m_hEditDays, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
@@ -237,7 +237,7 @@ void ServerPanelWindow::InitControls(HWND hWnd) {
     m_hLblSpotName = CreateWindowExW(0, L"STATIC", L"Tên:", WS_CHILD, 36, 605, 35, 24, hWnd, nullptr, m_hInstance, nullptr);
     SendMessage(m_hLblSpotName, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
 
-    m_hEditSpotName = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"Plaza - Bờ Hồ", WS_CHILD | ES_AUTOHSCROLL,
+    m_hEditSpotName = CreateWindowExW(0, L"EDIT", L"Plaza - Bờ Hồ", WS_CHILD | ES_AUTOHSCROLL,
         75, 601, 135, 28, hWnd, reinterpret_cast<HMENU>(IDC_EDIT_SPOT_NAME), m_hInstance, nullptr);
     SendMessage(m_hEditSpotName, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
 
@@ -256,19 +256,19 @@ void ServerPanelWindow::InitControls(HWND hWnd) {
 
     m_hLblX = CreateWindowExW(0, L"STATIC", L"X:", WS_CHILD, 385, 605, 18, 24, hWnd, nullptr, m_hInstance, nullptr);
     SendMessage(m_hLblX, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
-    m_hEditX = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0.0", WS_CHILD | ES_AUTOHSCROLL,
+    m_hEditX = CreateWindowExW(0, L"EDIT", L"0.0", WS_CHILD | ES_AUTOHSCROLL,
         405, 601, 55, 28, hWnd, reinterpret_cast<HMENU>(IDC_EDIT_SPOT_X), m_hInstance, nullptr);
     SendMessage(m_hEditX, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
 
     m_hLblY = CreateWindowExW(0, L"STATIC", L"Y:", WS_CHILD, 468, 605, 18, 24, hWnd, nullptr, m_hInstance, nullptr);
     SendMessage(m_hLblY, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
-    m_hEditY = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0.0", WS_CHILD | ES_AUTOHSCROLL,
+    m_hEditY = CreateWindowExW(0, L"EDIT", L"0.0", WS_CHILD | ES_AUTOHSCROLL,
         488, 601, 55, 28, hWnd, reinterpret_cast<HMENU>(IDC_EDIT_SPOT_Y), m_hInstance, nullptr);
     SendMessage(m_hEditY, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
 
     m_hLblZ = CreateWindowExW(0, L"STATIC", L"Z:", WS_CHILD, 551, 605, 18, 24, hWnd, nullptr, m_hInstance, nullptr);
     SendMessage(m_hLblZ, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontRegular), TRUE);
-    m_hEditZ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0.0", WS_CHILD | ES_AUTOHSCROLL,
+    m_hEditZ = CreateWindowExW(0, L"EDIT", L"0.0", WS_CHILD | ES_AUTOHSCROLL,
         571, 601, 55, 28, hWnd, reinterpret_cast<HMENU>(IDC_EDIT_SPOT_Z), m_hInstance, nullptr);
     SendMessage(m_hEditZ, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
 
@@ -541,6 +541,13 @@ LRESULT ServerPanelWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPA
         HDC hdc = dis->hDC;
         RECT rc = dis->rcItem;
         bool isSelected = (dis->itemState & ODS_SELECTED) != 0;
+
+        // Triệt tiêu 100% white corners: Pre-fill parent background
+        COLORREF parentCol = (dis->CtlID == IDC_TAB_BTN_0 || dis->CtlID == IDC_TAB_BTN_1 || dis->CtlID == IDC_TAB_BTN_2)
+                             ? theme::Color::BgMain : theme::Color::Card;
+        HBRUSH hParentBrush = CreateSolidBrush(parentCol);
+        FillRect(hdc, &rc, hParentBrush);
+        DeleteObject(hParentBrush);
 
         SetBkMode(hdc, TRANSPARENT);
 

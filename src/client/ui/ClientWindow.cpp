@@ -418,7 +418,7 @@ void ClientWindow::InitControls(HWND hWnd) {
     m_hChkLockPov = CreateWindowExW(0, L"BUTTON", L"Khóa POV khi câu", WS_CHILD | BS_AUTOCHECKBOX, 700, 130, 160, 24, hWnd, reinterpret_cast<HMENU>(IDC_FISH_CHK_LOCKPOV), m_hInstance, nullptr);
     m_hChkFastBite = CreateWindowExW(0, L"BUTTON", L"Cá cắn nhanh", WS_CHILD | BS_AUTOCHECKBOX, 700, 160, 160, 24, hWnd, reinterpret_cast<HMENU>(IDC_FISH_CHK_FASTBITE), m_hInstance, nullptr);
     m_hChkFilterFish = CreateWindowExW(0, L"BUTTON", L"Lọc cá", WS_CHILD | BS_AUTOCHECKBOX, 225, 275, 75, 24, hWnd, reinterpret_cast<HMENU>(IDC_FISH_CHK_FILTER), m_hInstance, nullptr);
-    m_hEditFilterId = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL, 645, 274, 210, 26, hWnd, reinterpret_cast<HMENU>(IDC_FISH_EDIT_FILTER_ID), m_hInstance, nullptr);
+    m_hEditFilterId = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL, 650, 274, 205, 26, hWnd, reinterpret_cast<HMENU>(IDC_FISH_EDIT_FILTER_ID), m_hInstance, nullptr);
     m_hBtnClearFilter = CreateWindowExW(0, L"BUTTON", L"Xoá điều kiện lọc", WS_CHILD | BS_OWNERDRAW, 870, 272, 170, 28, hWnd, reinterpret_cast<HMENU>(IDC_FISH_BTN_CLEAR_FILTER), m_hInstance, nullptr);
 
     int chipX = 275;
@@ -438,7 +438,7 @@ void ClientWindow::InitControls(HWND hWnd) {
 
     m_hChkKeepVariant = CreateWindowExW(0, L"BUTTON", L"Giữ cá biến thể", WS_CHILD | BS_AUTOCHECKBOX, 225, 415, 125, 24, hWnd, reinterpret_cast<HMENU>(IDC_FISH_CHK_KEEP_VAR), m_hInstance, nullptr);
     m_hChkKeepMutant = CreateWindowExW(0, L"BUTTON", L"Giữ cá đột biến", WS_CHILD | BS_AUTOCHECKBOX, 500, 415, 130, 24, hWnd, reinterpret_cast<HMENU>(IDC_FISH_CHK_KEEP_MUT), m_hInstance, nullptr);
-    m_hEditKeepId = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL, 695, 414, 160, 26, hWnd, reinterpret_cast<HMENU>(IDC_FISH_EDIT_KEEP_ID), m_hInstance, nullptr);
+    m_hEditKeepId = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL, 650, 414, 205, 26, hWnd, reinterpret_cast<HMENU>(IDC_FISH_EDIT_KEEP_ID), m_hInstance, nullptr);
     m_hBtnClearKeep = CreateWindowExW(0, L"BUTTON", L"Xoá điều kiện giữ", WS_CHILD | BS_OWNERDRAW, 870, 412, 170, 28, hWnd, reinterpret_cast<HMENU>(IDC_FISH_BTN_CLEAR_KEEP), m_hInstance, nullptr);
 
     chipX = 295;
@@ -614,18 +614,18 @@ void ClientWindow::InitControls(HWND hWnd) {
     // ==========================================
     // TAB 8: CÀI ĐẶT (SETTINGS) CONTROLS
     // ==========================================
-    m_hEditKey = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"DTA-VIP-2026-KEY", WS_CHILD | ES_AUTOHSCROLL, 380, 130, 360, 32, hWnd, reinterpret_cast<HMENU>(IDC_SET_EDIT_KEY), m_hInstance, nullptr);
+    m_hEditKey = CreateWindowExW(0, L"EDIT", L"DTA-VIP-2026-KEY", WS_CHILD | ES_AUTOHSCROLL, 380, 130, 360, 32, hWnd, reinterpret_cast<HMENU>(IDC_SET_EDIT_KEY), m_hInstance, nullptr);
     SendMessage(m_hEditKey, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
 
     m_hBtnActivateKey = CreateWindowExW(0, L"BUTTON", L"Lưu / Kích Hoạt", WS_CHILD | BS_OWNERDRAW, 755, 128, 160, 36, hWnd, reinterpret_cast<HMENU>(IDC_SET_BTN_ACTIVATE), m_hInstance, nullptr);
 
     std::wstring wHwid(m_clientHwid.begin(), m_clientHwid.end());
-    m_hStaticHWID = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", wHwid.c_str(), WS_CHILD | ES_READONLY | ES_AUTOHSCROLL, 380, 180, 360, 30, hWnd, reinterpret_cast<HMENU>(IDC_SET_EDIT_HWID), m_hInstance, nullptr);
+    m_hStaticHWID = CreateWindowExW(0, L"EDIT", wHwid.c_str(), WS_CHILD | ES_READONLY | ES_AUTOHSCROLL, 380, 180, 360, 30, hWnd, reinterpret_cast<HMENU>(IDC_SET_EDIT_HWID), m_hInstance, nullptr);
     SendMessage(m_hStaticHWID, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
 
     m_hBtnCopyHWID = CreateWindowExW(0, L"BUTTON", L"Sao Chép HWID", WS_CHILD | BS_OWNERDRAW, 755, 178, 160, 34, hWnd, reinterpret_cast<HMENU>(IDC_SET_BTN_COPY_HWID), m_hInstance, nullptr);
 
-    m_hEditServerUrl = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"http://127.0.0.1:28445", WS_CHILD | ES_AUTOHSCROLL, 380, 230, 360, 30, hWnd, reinterpret_cast<HMENU>(IDC_SET_EDIT_SERVER), m_hInstance, nullptr);
+    m_hEditServerUrl = CreateWindowExW(0, L"EDIT", L"http://127.0.0.1:28445", WS_CHILD | ES_AUTOHSCROLL, 380, 230, 360, 30, hWnd, reinterpret_cast<HMENU>(IDC_SET_EDIT_SERVER), m_hInstance, nullptr);
     SendMessage(m_hEditServerUrl, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
 
     m_hBtnPingServer = CreateWindowExW(0, L"BUTTON", L"Kiểm Tra Kết Nối", WS_CHILD | BS_OWNERDRAW, 755, 228, 160, 34, hWnd, reinterpret_cast<HMENU>(IDC_SET_BTN_PING), m_hInstance, nullptr);
@@ -792,7 +792,7 @@ void ClientWindow::SyncMasterSpotsFromServer() {
     }
 
     if (m_hWnd) {
-        PostMessageW(m_hWnd, WM_COMMAND, MAKEWPARAM(IDC_TELE_BTN_SYNC, 0), 0);
+        PostMessageW(m_hWnd, WM_USER + 101, 0, 0);
     }
 }
 
@@ -826,6 +826,10 @@ LRESULT ClientWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
     switch (msg) {
     case WM_ERASEBKGND:
         return 1; // Anti-Flicker 100%
+
+    case WM_USER + 101:
+        RefreshTeleportSpotList();
+        return 0;
 
     case WM_TIMER: {
         if (wParam == IDT_UI_REFRESH_TIMER) {
@@ -1099,6 +1103,26 @@ LRESULT ClientWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
         HDC hdc = dis->hDC;
         RECT rc = dis->rcItem;
         bool isSelected = (dis->itemState & ODS_SELECTED) != 0;
+
+        // Triệt tiêu 100% white corner notches bằng cách pre-fill đúng màu nền cha
+        COLORREF parentCol = theme::Color::Card; // Mặc định cho controls nằm trong card
+        if ((dis->CtlID >= IDC_SIDEBAR_BASE && dis->CtlID < IDC_SIDEBAR_BASE + 9) || dis->CtlID == IDC_SIDEBAR_BTN_LOGOUT) {
+            parentCol = theme::Color::Sidebar;
+        } else if (dis->CtlID == IDC_TOP_SUBTAB_FISHING || dis->CtlID == IDC_TOP_SUBTAB_HISTORY || dis->CtlID == IDC_TOP_BTN_REFRESH) {
+            parentCol = theme::Color::BgMain;
+        } else if ((dis->CtlID >= IDC_ESP_BTN_START && dis->CtlID <= IDC_ESP_BTN_STOP) ||
+                   (dis->CtlID >= IDC_FISH_BTN_START && dis->CtlID <= IDC_FISH_BTN_STOP) ||
+                   (dis->CtlID >= IDC_EXC_BTN_START && dis->CtlID <= IDC_EXC_BTN_STOP) ||
+                   (dis->CtlID >= IDC_MIN_BTN_START && dis->CtlID <= IDC_MIN_BTN_STOP) ||
+                   (dis->CtlID >= IDC_INS_BTN_START && dis->CtlID <= IDC_INS_BTN_STOP) ||
+                   (dis->CtlID >= IDC_COL_BTN_START && dis->CtlID <= IDC_COL_BTN_STOP) ||
+                   (dis->CtlID >= IDC_FARM_BTN_START && dis->CtlID <= IDC_FARM_BTN_STOP)) {
+            parentCol = theme::Color::BgMain;
+        }
+
+        HBRUSH hParentBrush = CreateSolidBrush(parentCol);
+        FillRect(hdc, &rc, hParentBrush);
+        DeleteObject(hParentBrush);
 
         SetBkMode(hdc, TRANSPARENT);
 

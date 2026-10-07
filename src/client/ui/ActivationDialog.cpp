@@ -2,7 +2,7 @@
 #include "client/network/NetworkClient.hpp"
 #include "client/security/HWIDProvider.hpp"
 #include "client/core/logger/AsyncLogger.hpp"
-#include "shared/Theme.hpp"
+#include "ModernCanvas.hpp"
 #include <dwmapi.h>
 #include <fstream>
 #include <sstream>
@@ -10,6 +10,9 @@
 #pragma comment(lib, "dwmapi.lib")
 
 namespace dta::ui {
+
+using namespace Gdiplus;
+namespace tok = dta::uikit::theme;
 
 #define IDC_ACT_EDIT_KEY      3001
 #define IDC_ACT_BTN_ACTIVATE  3002
@@ -22,8 +25,10 @@ ActivationDialog& ActivationDialog::Instance() {
 }
 
 ActivationDialog::ActivationDialog() {
-    m_hBgBrush = CreateSolidBrush(theme::Color::BgMain);
-    m_hCardBrush = CreateSolidBrush(theme::Color::Card);
+    uikit::GdiplusScope::Instance().Init();
+
+    m_hBgBrush = CreateSolidBrush(tok::Color::Background.Ref());
+    m_hCardBrush = CreateSolidBrush(tok::Color::Panel.Ref());
 
     m_hFontTitle = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -122,48 +127,47 @@ bool ActivationDialog::ShowModal(HINSTANCE hInstance, std::string& outLicenseKey
         WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
         L"DTAActivationDialogClass",
         L"DTA PlayTogether • Xác Thực Bản Quyền",
-        WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
         posX, posY, winW, winH,
         nullptr, nullptr, hInstance, this
     );
 
     if (!m_hWnd) return false;
 
-    // Enable Windows 11 Dark Mode and Rounded Window Corners (DWMWA_WINDOW_CORNER_PREFERENCE = 33)
+    // Enable Win11 Dark mode and round corners
     BOOL dark = TRUE;
     DwmSetWindowAttribute(m_hWnd, 20, &dark, sizeof(dark));
-    int cornerPref = 2; // DWMWCP_ROUND (Round Corners)
+    int cornerPref = 2; // DWMWCP_ROUND
     DwmSetWindowAttribute(m_hWnd, 33, &cornerPref, sizeof(cornerPref));
 
-    // Input Key Box (Centered, Sleek)
+    // Input Key (Flat, borderless inside modern panel)
     std::string savedKey = LoadSavedKey();
-    std::wstring wSavedKey(savedKey.begin(), savedKey.end());
-    m_hEditKey = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", wSavedKey.c_str(),
+    std::wstring wKey(savedKey.begin(), savedKey.end());
+    m_hEditKey = CreateWindowExW(0, L"EDIT", wKey.c_str(),
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-        30, 132, 480, 36, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_EDIT_KEY), m_hInstance, nullptr);
+        40, 143, 440, 24, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_EDIT_KEY), m_hInstance, nullptr);
     SendMessage(m_hEditKey, WM_SETFONT, reinterpret_cast<WPARAM>(m_hFontMono), TRUE);
+    SendMessage(m_hEditKey, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
 
-    // Primary Action Buttons (Bo góc 10px qua Owner-Drawn)
-    m_hBtnActivate = CreateWindowExW(0, L"BUTTON", L"XÁC NHẬN VIP",
+    // Nút Xác nhận VIP
+    m_hBtnActivate = CreateWindowExW(0, L"BUTTON", L"✦ XÁC NHẬN VIP",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        30, 180, 340, 44, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_BTN_ACTIVATE), m_hInstance, nullptr);
+        30, 185, 330, 44, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_BTN_ACTIVATE), m_hInstance, nullptr);
 
+    // Nút Thoát
     m_hBtnExit = CreateWindowExW(0, L"BUTTON", L"THOÁT",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        380, 180, 130, 44, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_BTN_EXIT), m_hInstance, nullptr);
+        375, 185, 115, 44, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_BTN_EXIT), m_hInstance, nullptr);
 
-    // Free Tier Button (Emerald Pill)
+    // Nút Dùng bản miễn phí
     m_hBtnFreeTier = CreateWindowExW(0, L"BUTTON", L"🎁  DÙNG BẢN MIỄN PHÍ",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        30, 285, 480, 46, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_BTN_FREE), m_hInstance, nullptr);
-
-    m_statusMessage = L"Vui lòng nhập License Key VIP hoặc chọn Dùng bản miễn phí.";
-    m_statusColor = theme::Color::TextSecondary;
+        30, 280, 460, 46, m_hWnd, reinterpret_cast<HMENU>(IDC_ACT_BTN_FREE), m_hInstance, nullptr);
 
     ShowWindow(m_hWnd, SW_SHOW);
     UpdateWindow(m_hWnd);
 
-    // Modal message loop
+    // Modal Message Loop
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
@@ -182,7 +186,7 @@ bool ActivationDialog::ShowModal(HINSTANCE hInstance, std::string& outLicenseKey
 LRESULT ActivationDialog::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_ERASEBKGND:
-        return 1; // Ngăn chặn flicker
+        return 1;
 
     case WM_PAINT: {
         PAINTSTRUCT ps;
@@ -193,65 +197,64 @@ LRESULT ActivationDialog::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPAR
         int w = rcClient.right - rcClient.left;
         int h = rcClient.bottom - rcClient.top;
 
-        // Double Buffering: Tạo memory DC chống lag và flicker
         HDC hdc = CreateCompatibleDC(hdcWin);
         HBITMAP hBmp = CreateCompatibleBitmap(hdcWin, w, h);
         HGDIOBJ oldBmp = SelectObject(hdc, hBmp);
 
-        // 1. Fill Background (#0B0F17)
-        HBRUSH hBg = CreateSolidBrush(theme::Color::BgMain);
-        FillRect(hdc, &rcClient, hBg);
-        DeleteObject(hBg);
+        // GDI+ antialiased rendering
+        {
+            Graphics g(hdc);
+            g.SetSmoothingMode(SmoothingModeAntiAlias);
+            g.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
 
-        // 2. Header Area: Logo & Subtitle
-        SetBkMode(hdc, TRANSPARENT);
-        HGDIOBJ oldFont = SelectObject(hdc, m_hFontTitle);
-        SetTextColor(hdc, theme::Color::CyanNeon);
-        TextOutW(hdc, 30, 22, L"✦ DTA PLAYTOGETHER", 18);
+            // 1. Fill Background (#0B0F17)
+            SolidBrush bgBrush(uikit::ToGdiPlus(tok::Color::Background));
+            g.FillRectangle(&bgBrush, 0.0f, 0.0f, (float)w, (float)h);
 
-        SelectObject(hdc, m_hFontRegular);
-        SetTextColor(hdc, theme::Color::TextSecondary);
-        TextOutW(hdc, 30, 52, L"Kích Hoạt Bản Quyền VIP hoặc Trải Nghiệm Bản Miễn Phí", 53);
+            // 2. Header
+            Font fontTitle(hdc, m_hFontTitle);
+            SolidBrush cyanBrush(uikit::ToGdiPlus(tok::Color::AccentCyan));
+            g.DrawString(L"✦ DTA PLAYTOGETHER", -1, &fontTitle, PointF(30.0f, 22.0f), &cyanBrush);
 
-        // Đường accent mỏng dưới header
-        HPEN hPenLine = CreatePen(PS_SOLID, 1, theme::Color::BorderSubtle);
-        HGDIOBJ oldPen = SelectObject(hdc, hPenLine);
-        MoveToEx(hdc, 30, 80, nullptr);
-        LineTo(hdc, w - 30, 80);
+            Font fontReg(hdc, m_hFontRegular);
+            SolidBrush textSecBrush(uikit::ToGdiPlus(tok::Color::TextSecondary));
+            g.DrawString(L"Kích Hoạt Bản Quyền VIP hoặc Trải Nghiệm Bản Miễn Phí", -1, &fontReg, PointF(30.0f, 54.0f), &textSecBrush);
 
-        // 3. Label License Key
-        SelectObject(hdc, m_hFontBold);
-        SetTextColor(hdc, theme::Color::TextPrimary);
-        TextOutW(hdc, 30, 105, L"NHẬP MÃ LICENSE KEY VIP:", 24);
+            // Hairline separator
+            Pen linePen(uikit::ToGdiPlus(tok::Color::Hairline), 1.0f);
+            g.DrawLine(&linePen, 30.0f, 84.0f, (float)(w - 30), 84.0f);
 
-        // 4. Status Message Text (Giữa 2 cụm nút)
-        SelectObject(hdc, m_hFontBold);
-        SetTextColor(hdc, m_statusColor);
-        RECT rcStatus{30, 230, w - 30, 255};
-        DrawTextW(hdc, m_statusMessage.c_str(), -1, &rcStatus, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            // 3. Label
+            Font fontBold(hdc, m_hFontBold);
+            SolidBrush textPriBrush(uikit::ToGdiPlus(tok::Color::TextPrimary));
+            g.DrawString(L"NHẬP MÃ LICENSE KEY VIP:", -1, &fontBold, PointF(30.0f, 106.0f), &textPriBrush);
 
-        // 5. Divider Line trước Free Tier
-        MoveToEx(hdc, 30, 265, nullptr);
-        LineTo(hdc, w - 30, 265);
-        SelectObject(hdc, oldPen);
-        DeleteObject(hPenLine);
+            // 4. Input Container Card (Antialiased rounded box behind edit)
+            RectF inputRect(30.0f, 134.0f, 460.0f, 40.0f);
+            uikit::FillRoundedRect(g, inputRect, 8.0f, uikit::ToGdiPlus(tok::Color::Input));
+            uikit::DrawRoundedRect(g, inputRect, 8.0f, uikit::ToGdiPlus(tok::Color::BorderStrong), 1.0f);
 
-        // 6. Subtitle Note bên dưới Free Tier button
-        SelectObject(hdc, m_hFontRegular);
-        SetTextColor(hdc, theme::Color::TextMuted);
-        RECT rcNote{30, 345, w - 30, 395};
-        DrawTextW(hdc,
-            L"* Bản miễn phí: Chỉ hỗ trợ Câu cá (bán toàn bộ cá, không lọc, không câu cá bóng 6-7, có khóa cam).",
-            -1, &rcNote, DT_LEFT | DT_WORDBREAK);
+            // 5. Status Message Text
+            SolidBrush statBrush(Color(255, GetRValue(m_statusColor), GetGValue(m_statusColor), GetBValue(m_statusColor)));
+            g.DrawString(m_statusMessage.c_str(), -1, &fontBold, PointF(30.0f, 240.0f), &statBrush);
 
-        SelectObject(hdc, oldFont);
+            // Divider before Free Tier
+            g.DrawLine(&linePen, 30.0f, 268.0f, (float)(w - 30), 268.0f);
 
-        // BitBlt toàn bộ bộ nhớ ảo lên màn hình 60 FPS
+            // 6. Note Text
+            SolidBrush mutedBrush(uikit::ToGdiPlus(tok::Color::TextMuted));
+            RectF noteRect(30.0f, 342.0f, 460.0f, 60.0f);
+            StringFormat noteFmt;
+            noteFmt.SetAlignment(StringAlignmentNear);
+            g.DrawString(L"* Bản miễn phí: Chỉ hỗ trợ Câu cá (bán toàn bộ cá, không lọc, không câu cá bóng 6-7, có khóa cam).",
+                         -1, &fontReg, noteRect, &noteFmt, &mutedBrush);
+        }
+
         BitBlt(hdcWin, 0, 0, w, h, hdc, 0, 0, SRCCOPY);
-
         SelectObject(hdc, oldBmp);
         DeleteObject(hBmp);
         DeleteDC(hdc);
+
         EndPaint(hWnd, &ps);
         return 0;
     }
@@ -262,17 +265,28 @@ LRESULT ActivationDialog::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPAR
         RECT rc = dis->rcItem;
         bool isSelected = (dis->itemState & ODS_SELECTED) != 0;
 
+        Graphics g(hdc);
+        g.SetSmoothingMode(SmoothingModeAntiAlias);
+        g.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
+
+        // 100% ZERO WHITE CORNERS: Clear button rect with window background color
+        SolidBrush bgParent(uikit::ToGdiPlus(tok::Color::Background));
+        g.FillRectangle(&bgParent, 0.0f, 0.0f, (float)(rc.right - rc.left), (float)(rc.bottom - rc.top));
+
+        RectF btnRect(0.0f, 0.0f, (float)(rc.right - rc.left), (float)(rc.bottom - rc.top));
+        Font font(hdc, m_hFontBold);
+
         if (dis->CtlID == IDC_ACT_BTN_ACTIVATE) {
-            COLORREF bg = isSelected ? theme::Color::AccentHover : theme::Color::Accent;
-            theme::DrawModernButton(hdc, rc, L"XÁC NHẬN VIP", bg, bg, theme::Color::TextPrimary, m_hFontBold, theme::Radius::Normal);
+            Color bg = isSelected ? uikit::ToGdiPlus(tok::Color::AccentPressed) : uikit::ToGdiPlus(tok::Color::Accent);
+            uikit::DrawModernButton(g, btnRect, L"✦ XÁC NHẬN VIP", &font, bg, uikit::ToGdiPlus(tok::Color::AccentHover), uikit::ToGdiPlus(tok::Color::White), 8.0f);
             return TRUE;
         } else if (dis->CtlID == IDC_ACT_BTN_EXIT) {
-            COLORREF bg = isSelected ? theme::Color::CardHover : theme::Color::Card;
-            theme::DrawModernButton(hdc, rc, L"THOÁT", bg, theme::Color::BorderSubtle, theme::Color::TextSecondary, m_hFontBold, theme::Radius::Normal);
+            Color bg = isSelected ? uikit::ToGdiPlus(tok::Color::PanelHover) : uikit::ToGdiPlus(tok::Color::PanelAlt);
+            uikit::DrawModernButton(g, btnRect, L"THOÁT", &font, bg, uikit::ToGdiPlus(tok::Color::BorderStrong), uikit::ToGdiPlus(tok::Color::TextSecondary), 8.0f);
             return TRUE;
         } else if (dis->CtlID == IDC_ACT_BTN_FREE) {
-            COLORREF bg = isSelected ? theme::Color::SuccessHover : theme::Color::Success;
-            theme::DrawModernButton(hdc, rc, L"🎁  DÙNG BẢN MIỄN PHÍ", bg, bg, theme::Color::TextPrimary, m_hFontBold, theme::Radius::Normal);
+            Color bg = isSelected ? Color(255, 18, 140, 60) : uikit::ToGdiPlus(tok::Color::Success);
+            uikit::DrawModernButton(g, btnRect, L"🎁  DÙNG BẢN MIỄN PHÍ", &font, bg, uikit::ToGdiPlus(tok::Color::SuccessText), uikit::ToGdiPlus(tok::Color::White), 8.0f);
             return TRUE;
         }
         break;
@@ -289,17 +303,16 @@ LRESULT ActivationDialog::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
             if (keyStr.empty()) {
                 m_statusMessage = L"Vui lòng không để trống ô License Key!";
-                m_statusColor = theme::Color::Danger;
-                InvalidateRect(hWnd, nullptr, TRUE);
+                m_statusColor = tok::Color::Danger.Ref();
+                InvalidateRect(hWnd, nullptr, FALSE);
                 return 0;
             }
 
             m_statusMessage = L"Đang kết nối xác thực License với Server...";
-            m_statusColor = theme::Color::Accent;
-            InvalidateRect(hWnd, nullptr, TRUE);
+            m_statusColor = tok::Color::Accent.Ref();
+            InvalidateRect(hWnd, nullptr, FALSE);
             UpdateWindow(hWnd);
 
-            // Xác thực không block qua NetworkClient timeout 150ms
             std::string hwid = security::HWIDProvider::GetHWID();
             std::string resultMsg;
             bool ok = network::NetworkClient::Instance().ActivateLicense(keyStr, hwid, resultMsg);
@@ -309,29 +322,17 @@ LRESULT ActivationDialog::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPAR
                 m_isFreeTier = false;
                 m_activatedKey = keyStr;
                 SaveKey(keyStr);
-                m_statusMessage = L"Kích hoạt VIP thành công! Đang mở giao diện Tool...";
-                m_statusColor = theme::Color::Success;
-                InvalidateRect(hWnd, nullptr, TRUE);
-                UpdateWindow(hWnd);
-
-                Sleep(200);
+                MessageBoxW(hWnd, L"Kích hoạt License VIP thành công!", L"Thành Công", MB_OK | MB_ICONINFORMATION);
                 DestroyWindow(hWnd);
             } else {
-                std::wstring wRes(resultMsg.begin(), resultMsg.end());
-                m_statusMessage = wRes.empty() ? L"Key không hợp lệ hoặc máy chủ không phản hồi!" : wRes;
-                m_statusColor = theme::Color::Danger;
-                InvalidateRect(hWnd, nullptr, TRUE);
+                m_statusMessage = L"Mã Key không hợp lệ hoặc máy chủ không phản hồi!";
+                m_statusColor = tok::Color::Danger.Ref();
+                InvalidateRect(hWnd, nullptr, FALSE);
             }
         } else if (id == IDC_ACT_BTN_FREE) {
             m_success = true;
             m_isFreeTier = true;
-            m_activatedKey = "FREE-TIER";
-            m_statusMessage = L"Đã chọn Bản Miễn Phí! Đang mở giao diện Tool...";
-            m_statusColor = theme::Color::Success;
-            InvalidateRect(hWnd, nullptr, TRUE);
-            UpdateWindow(hWnd);
-
-            Sleep(150);
+            m_activatedKey = "FREE-TIER-GUEST";
             DestroyWindow(hWnd);
         } else if (id == IDC_ACT_BTN_EXIT) {
             m_success = false;
@@ -340,30 +341,16 @@ LRESULT ActivationDialog::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPAR
         break;
     }
 
-    case WM_CTLCOLORSTATIC: {
-        HDC hdcStatic = reinterpret_cast<HDC>(wParam);
-        SetTextColor(hdcStatic, theme::Color::TextPrimary);
-        SetBkColor(hdcStatic, theme::Color::BgMain);
-        return reinterpret_cast<INT_PTR>(m_hBgBrush);
-    }
-
     case WM_CTLCOLOREDIT: {
         HDC hdcEdit = reinterpret_cast<HDC>(wParam);
-        SetTextColor(hdcEdit, theme::Color::TextPrimary);
-        SetBkColor(hdcEdit, theme::Color::Card);
+        SetTextColor(hdcEdit, tok::Color::TextPrimary.Ref());
+        SetBkColor(hdcEdit, tok::Color::Input.Ref());
         return reinterpret_cast<INT_PTR>(m_hCardBrush);
     }
 
-    case WM_CLOSE: {
-        m_success = false;
-        DestroyWindow(hWnd);
-        return 0;
-    }
-
-    case WM_DESTROY: {
+    case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
-    }
     }
 
     return DefWindowProcW(hWnd, msg, wParam, lParam);
