@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>DTA.Engine</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DTA.Game\DTA.Game.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Net/server_cert.pem" LogicalName="DTA.Engine.server_cert.pem" />
+  </ItemGroup>
+  <!-- Địa chỉ máy chủ key ghi vào bản build: dotnet publish -p:DtaServer=host:port (build.ps1 -Server) -->
+  <ItemGroup Condition="'$(DtaServer)' != ''">
+    <AssemblyMetadata Include="DtaServer" Value="$(DtaServer)" />
+  </ItemGroup>
+</Project>

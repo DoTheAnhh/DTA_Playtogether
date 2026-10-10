@@ -1,0 +1,17 @@
+[
+  {
+    "key": "dta-2bdbed87-d112-43bc-9fc5-b467671a38e0",
+    "note": "",
+    "created": 1791552802,
+    "duration": 2592000,
+    "expires": 1794145130,
+    "max_devices": 1,
+    "devices": {
+      "7bc6e7fd8556252bd8d9dbfd833270b1": 1791630171
+    },
+    "blocked": false,
+    "activated": 1791553130,
+    "last_seen": 1791630171,
+    "last_ip": "127.0.0.1"
+  }
+]

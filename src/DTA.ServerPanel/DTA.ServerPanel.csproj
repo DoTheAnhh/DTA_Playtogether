@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>DTA.ServerPanel</RootNamespace>
+    <AssemblyName>DTA_ServerPanel</AssemblyName>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DTA.Server\DTA.Server.csproj" />
+    <ProjectReference Include="..\DTA.Ui\DTA.Ui.csproj" />
+  </ItemGroup>
+</Project>

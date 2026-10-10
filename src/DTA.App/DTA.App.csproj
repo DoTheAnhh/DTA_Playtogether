@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>DTA.App</RootNamespace>
+    <AssemblyName>DTA_Playtogether</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app_icon.ico</ApplicationIcon>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DTA.Features\DTA.Features.csproj" />
+    <ProjectReference Include="..\DTA.Ui\DTA.Ui.csproj" />
+  </ItemGroup>
+</Project>

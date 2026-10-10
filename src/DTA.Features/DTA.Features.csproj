@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>DTA.Features</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DTA.Engine\DTA.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fishing/fish_catalog.json" LogicalName="DTA.Features.Fishing.fish_catalog.json" />
+  </ItemGroup>
+</Project>
